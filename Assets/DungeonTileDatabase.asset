@@ -1,0 +1,605 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e516293c62f3b4240b30df4920754b91, type: 3}
+  m_Name: DungeonTileDatabase
+  m_EditorClassIdentifier: 
+  allTiles:
+  - tileName: Tiles_+Corner_01_A
+    prefab: {fileID: 6692238247196414879, guid: 756e88de6194f89469f53747fe14df87, type: 3}
+    frontEdge: 1
+    backEdge: 0
+    leftEdge: 1
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Corner_01_B
+    prefab: {fileID: 2612087463545387332, guid: 9e035c055a4d74f4f85477a73227a785, type: 3}
+    frontEdge: 1
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Corner_01_C
+    prefab: {fileID: 6819700872630205504, guid: 763497c78e4320841a962b213d133e7c, type: 3}
+    frontEdge: 0
+    backEdge: 1
+    leftEdge: 1
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Corner_01_D
+    prefab: {fileID: 5668654815676097416, guid: d9075f40aceae6c4dbbff497066fd151, type: 3}
+    frontEdge: 0
+    backEdge: 1
+    leftEdge: 0
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Corner_02_A
+    prefab: {fileID: 2162421125783221826, guid: a05bff2b52dba4f419cf0c69b4cab89c, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Corner_02_B
+    prefab: {fileID: 1927679495255229662, guid: 722ca2f5650088f46b0bf95645d4bcda, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Corner_02_C
+    prefab: {fileID: 8427235093063868498, guid: 9d02221fb5297a0429ded63f85590a90, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Corner_02_D
+    prefab: {fileID: 3435496492228609841, guid: a3f97c84b9c482241a557d3615491865, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Cross
+    prefab: {fileID: 3587055196393514200, guid: d6b76243756e705469385a118f8504cd, type: 3}
+    frontEdge: 1
+    backEdge: 1
+    leftEdge: 1
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Halls_01_A
+    prefab: {fileID: 4286543267482795793, guid: b47ad29467ca091478d6e3d903e9a1d3, type: 3}
+    frontEdge: 1
+    backEdge: 1
+    leftEdge: 0
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Halls_01_B
+    prefab: {fileID: 4930848404113637754, guid: fbe3a8ebb33464d48b5897783158ce7f, type: 3}
+    frontEdge: 0
+    backEdge: 0
+    leftEdge: 1
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+RoomEnd_01_A
+    prefab: {fileID: 3804226980648114438, guid: c9e3c9f999ee34e43bea53b8529f6121, type: 3}
+    frontEdge: 1
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+RoomEnd_01_B
+    prefab: {fileID: 4384093368553970027, guid: c039e0a7126fafb4ea781135df2504e8, type: 3}
+    frontEdge: 0
+    backEdge: 0
+    leftEdge: 1
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+RoomEnd_01_C
+    prefab: {fileID: 310072952263196604, guid: 1228a40030a80924ab62008a3ce79ebd, type: 3}
+    frontEdge: 0
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+RoomEnd_01_D
+    prefab: {fileID: 6739030507763347085, guid: 6bb77e66e4dc9a840bb4b7be7bf7c039, type: 3}
+    frontEdge: 0
+    backEdge: 1
+    leftEdge: 0
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Side_01_A
+    prefab: {fileID: 7662033823645959141, guid: fd4ab0bde46686149a8239c5469fbc69, type: 3}
+    frontEdge: 1
+    backEdge: 0
+    leftEdge: 1
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Side_01_B
+    prefab: {fileID: 8743093046031931183, guid: 847ff4a30a8f09343ba3d34b57ca3b3e, type: 3}
+    frontEdge: 1
+    backEdge: 1
+    leftEdge: 1
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Side_01_C
+    prefab: {fileID: 2574904031239978674, guid: ad3b541cf79f215488f0c8c1ba4db49a, type: 3}
+    frontEdge: 1
+    backEdge: 1
+    leftEdge: 0
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Side_01_D
+    prefab: {fileID: 5032692350241604276, guid: 8804a719b3c745c4cbc2fd672d92ac5d, type: 3}
+    frontEdge: 0
+    backEdge: 1
+    leftEdge: 1
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Side_02_A
+    prefab: {fileID: 7709420087613706462, guid: d337ffa2f6484cd488bb9e0871f1868e, type: 3}
+    frontEdge: 1
+    backEdge: 4
+    leftEdge: 1
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Side_02_B
+    prefab: {fileID: 1265368333673719283, guid: 34f6a2366dccdc448b52d1268e9ffeb7, type: 3}
+    frontEdge: 1
+    backEdge: 1
+    leftEdge: 1
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Side_02_C
+    prefab: {fileID: 3965058318363374441, guid: 9451be54eee2a2947991859aacb9afaf, type: 3}
+    frontEdge: 1
+    backEdge: 1
+    leftEdge: 4
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_+Side_02_D
+    prefab: {fileID: 6306065273793643493, guid: dca34f98bfb644241a8fe233ad83cdfe, type: 3}
+    frontEdge: 4
+    backEdge: 1
+    leftEdge: 1
+    rightEdge: 1
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_01_A
+    prefab: {fileID: 7647646674958753419, guid: a9d17aa2e1c8d684db0d8b211e846b11, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_01_B
+    prefab: {fileID: 8269983715994132688, guid: 194433cb7c10c944f8826fa04f42a9a7, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_01_C
+    prefab: {fileID: 1000641269262732902, guid: eefe460f4eb17084787837fc4b22fb34, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_01_D
+    prefab: {fileID: 8004217796654838489, guid: 8115b72153b9bd545a1deeb93c8b3afb, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_02_A
+    prefab: {fileID: 2113118195122859966, guid: c9cce6dbcf9788345b1ae4a8bcb3c417, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_02_B
+    prefab: {fileID: 1246815392072334727, guid: df2006c24fa0c0a489913711ec5814c3, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_02_C
+    prefab: {fileID: 5536998131204177018, guid: 9399f14c7a3f8be4593a59362dd08af1, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_02_D
+    prefab: {fileID: 1584007322828466498, guid: 278e9bcfd6a9f3244bb5f194fa518d50, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_03_A
+    prefab: {fileID: 2454067061400492295, guid: 50172712486970e4c8268a7be84182b9, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_03_B
+    prefab: {fileID: 1783337238259441070, guid: 08c2ff31d1e64d049b4ca297897283c0, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_03_C
+    prefab: {fileID: 8378809332253132808, guid: eeba9d6c1c02ed148b20923077179a68, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_03_D
+    prefab: {fileID: 6025234045670605919, guid: 6a0650220554f0640bd88b0954081fe7, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_04_A
+    prefab: {fileID: 4646926749502515426, guid: 4d7116bfed9d4b9478906f79383ab10b, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_04_B
+    prefab: {fileID: 1164117218686902072, guid: 54ee2a2a2a3e19445b33508deaafb19a, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_04_C
+    prefab: {fileID: 29708365436696313, guid: 14c09d9149ad2fe4d8362dc0d7ffe5f6, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_04_D
+    prefab: {fileID: 8066533427919316450, guid: ce5c2495d79282f4ea399688b5225860, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_05_A
+    prefab: {fileID: 2670734667173601741, guid: 517dca1449c07544e9abf9221f910ccf, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_05_B
+    prefab: {fileID: 8793743285683394601, guid: f50e46bede2c1d04aa26c3e249cc8f57, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_05_C
+    prefab: {fileID: 4784725385407276271, guid: 5b1f3fa50529ed84b9d1bab06a233301, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_05_D
+    prefab: {fileID: 6508986222484123955, guid: 973c5fa602593b64d8262744e4d4945d, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_06_A
+    prefab: {fileID: 6903576459116413047, guid: 24f9e81dca200d14d9f12cc1fe31648e, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_06_B
+    prefab: {fileID: 6863797301233779294, guid: 4850741279990b64e91bb6c0ffb60231, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_06_C
+    prefab: {fileID: 7023887228740302228, guid: 41050271504953940899a8a51457fcf1, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicCorner_06_D
+    prefab: {fileID: 6437383194797626922, guid: 68be1ed00d17d2845a85d4ddd518a97d, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicSide_01_A
+    prefab: {fileID: 4431378179620011228, guid: bbe2bb717665bb44c9b2e69de520c6c3, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicSide_01_B
+    prefab: {fileID: 8451738435002493466, guid: d8dacebeb29609c4db6ba7425113a1ec, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicSide_01_C
+    prefab: {fileID: 4380844498191524432, guid: 25c12ab16ba5d404192d32c7ff026a1f, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicSide_01_D
+    prefab: {fileID: 360822062037185115, guid: 47ed96f758df88b40a1e44a8b4b5809d, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicSide_02_A
+    prefab: {fileID: 8301783049252282964, guid: 72bbd19fca6ed534495fbd9fe0c0ec08, type: 3}
+    frontEdge: 4
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicSide_02_B
+    prefab: {fileID: 8488838651888426142, guid: fc9e5b7ffaa34834ba6b58da671788ba, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicSide_02_C
+    prefab: {fileID: 3575550719900152855, guid: af7fcc40c6c21014581f6c5b714a0442, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 0
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_BasicSide_02_D
+    prefab: {fileID: 5849883451375281373, guid: ecffc8a132c037d43855f4d6d4e53b00, type: 3}
+    frontEdge: 0
+    backEdge: 4
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_THalls_01_A
+    prefab: {fileID: 8861574865248473265, guid: ea58b9671313da545804f92dd81265ed, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 0
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_THalls_01_B
+    prefab: {fileID: 8074214320295332577, guid: f2adef08342e1434ba6ed2a2dcdb0443, type: 3}
+    frontEdge: 4
+    backEdge: 4
+    leftEdge: 0
+    rightEdge: 0
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_THalls_01_C
+    prefab: {fileID: 4928241053351670263, guid: 588ab5954570c19409d7816612d0569d, type: 3}
+    frontEdge: 0
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
+  - tileName: Tiles_THalls_01_D
+    prefab: {fileID: 7976395634947253366, guid: 7eb7d757dc5da184d80827139b713253, type: 3}
+    frontEdge: 0
+    backEdge: 0
+    leftEdge: 4
+    rightEdge: 4
+    hasUpperLevel: 0
+    hasHoleInFloor: 0
+    hasHoleInCeiling: 0
+    weight: 1
