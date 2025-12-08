@@ -8,6 +8,12 @@ public class GazeDetector : MonoBehaviour
     [SerializeField] private float smoothingFactor = 0.3f;
     [SerializeField] private bool showDebugCursor = true;
 
+    [Header("Calibration")]
+    [SerializeField] private bool invertX = false;
+    [SerializeField] private bool invertY = false;
+    [SerializeField] private Vector2 gazeOffset = Vector2.zero;
+    [SerializeField] private Vector2 gazeScale = Vector2.one;
+
     // Nose tip - most stable face landmark
     private const int FACE_CENTER = 1;
 
@@ -54,9 +60,18 @@ public class GazeDetector : MonoBehaviour
         IsTracking = true;
 
         // Just track nose tip position
-        rawPosition = new Vector2(
+        Vector2 facePos = new Vector2(
             landmarks[FACE_CENTER].x,
             landmarks[FACE_CENTER].y
+        );
+
+        // Apply calibration
+        if (invertX) facePos.x = 1f - facePos.x;
+        if (invertY) facePos.y = 1f - facePos.y;
+
+        rawPosition = new Vector2(
+            (facePos.x * gazeScale.x) + gazeOffset.x,
+            (facePos.y * gazeScale.y) + gazeOffset.y
         );
 
         rawPosition.x = Mathf.Clamp01(rawPosition.x);
@@ -135,4 +150,17 @@ public class GazeDetector : MonoBehaviour
         }
     }
 
+    public Ray GetGazeRay(Camera camera)
+    {
+        return camera.ScreenPointToRay(screenPosition);
+    }
+
+
+    public void SetCalibration(Vector2 offset, Vector2 scale, bool invertXAxis, bool invertYAxis)
+    {
+        gazeOffset = offset;
+        gazeScale = scale;
+        invertX = invertXAxis;
+        invertY = invertYAxis;
+    }
 }
