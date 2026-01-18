@@ -10,6 +10,7 @@ public class BlinkVignetteController : MonoBehaviour
     public class ScreenBlackEvent : UnityEvent { }
 
     [Header("Events")]
+    public ScreenBlackEvent OnBlinkStart;
     public ScreenBlackEvent OnScreenFullyBlack;
 
     [Header("References")]
@@ -57,6 +58,9 @@ public class BlinkVignetteController : MonoBehaviour
         if (isBlinking && !wasBlinking && !isAnimating)
         {
             blinkStartTime = Time.time;
+
+            // Fire blink start event immediately
+            OnBlinkStart?.Invoke();
 
             if (currentBlinkRoutine != null)
             {
@@ -137,5 +141,11 @@ public class BlinkVignetteController : MonoBehaviour
     public bool IsFullyClosed()
     {
         return vignetteImage.color.a >= 0.99f;
+    }
+
+    // Check if any blink animation is currently playing
+    public bool IsBlinkAnimating()
+    {
+        return isAnimating;
     }
 }
