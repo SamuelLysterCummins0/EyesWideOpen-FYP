@@ -10,22 +10,26 @@ public class BlinkVignetteController : MonoBehaviour
     public class ScreenBlackEvent : UnityEvent { }
 
     [Header("Events")]
-    public ScreenBlackEvent OnBlinkStart;
     public ScreenBlackEvent OnScreenFullyBlack;
+    public ScreenBlackEvent OnBlinkStart; // Fires the instant a blink is detected, before close animation
 
     [Header("References")]
     [SerializeField] private Image vignetteImage;
     [SerializeField] private BlinkDetector blinkDetector;
 
     [Header("Animation Settings")]
-    [SerializeField] private float blinkCloseTime = 0.1f;
-    [SerializeField] private float blinkOpenTime = 0.12f;
-    [SerializeField] private float minBlinkDuration = 0.2f;
+    [SerializeField] private float blinkCloseTime = 0.1f;  // Time to close eyes
+    [SerializeField] private float blinkOpenTime = 0.12f;  // Time to open eyes
+    [SerializeField] private float minBlinkDuration = 0.2f; // Minimum time eyes stay closed
 
     [Header("Visual Settings")]
     [SerializeField] private AnimationCurve closeCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
     [SerializeField] private AnimationCurve openCurve = AnimationCurve.EaseInOut(0, 1, 1, 0);
     [SerializeField] private Color vignetteColor = Color.black;
+
+    [Header("Scale Effect (Optional)")]
+    [SerializeField] private bool useScaleEffect = true;
+    [SerializeField] private float maxScale = 50f; // How much the vignette scales
 
     private bool isAnimating = false;
     private bool wasBlinking = false;
@@ -46,6 +50,11 @@ public class BlinkVignetteController : MonoBehaviour
 
         // Initialize fully transparent
         SetVignetteAlpha(0f);
+
+        if (useScaleEffect)
+        {
+            vignetteImage.transform.localScale = Vector3.one * maxScale;
+        }
     }
 
     void Update()
@@ -59,14 +68,12 @@ public class BlinkVignetteController : MonoBehaviour
         {
             blinkStartTime = Time.time;
 
-            // Fire blink start event immediately
-            OnBlinkStart?.Invoke();
-
             if (currentBlinkRoutine != null)
             {
                 StopCoroutine(currentBlinkRoutine);
             }
 
+            OnBlinkStart?.Invoke(); // Fire immediately before any animation — NPC can freeze here
             currentBlinkRoutine = StartCoroutine(BlinkAnimation());
         }
 
@@ -87,10 +94,20 @@ public class BlinkVignetteController : MonoBehaviour
 
             SetVignetteAlpha(curveValue);
 
+            if (useScaleEffect)
+            {
+                float scale = Mathf.Lerp(maxScale, 1f, curveValue);
+                vignetteImage.transform.localScale = Vector3.one * scale;
+            }
+
             yield return null;
         }
 
         SetVignetteAlpha(1f);
+        if (useScaleEffect)
+        {
+            vignetteImage.transform.localScale = Vector3.one;
+        }
 
         // TRIGGER EVENT: Screen is now fully black
         OnScreenFullyBlack?.Invoke();
@@ -115,10 +132,20 @@ public class BlinkVignetteController : MonoBehaviour
 
             SetVignetteAlpha(curveValue);
 
+            if (useScaleEffect)
+            {
+                float scale = Mathf.Lerp(1f, maxScale, progress);
+                vignetteImage.transform.localScale = Vector3.one * scale;
+            }
+
             yield return null;
         }
 
         SetVignetteAlpha(0f);
+        if (useScaleEffect)
+        {
+            vignetteImage.transform.localScale = Vector3.one * maxScale;
+        }
 
         isAnimating = false;
         currentBlinkRoutine = null;
@@ -143,7 +170,8 @@ public class BlinkVignetteController : MonoBehaviour
         return vignetteImage.color.a >= 0.99f;
     }
 
-    // Check if any blink animation is currently playing
+    // Returns true any time the blink animation is running (closing, closed, or opening)
+    // Use this to prevent NPC movement being visible during any part of a blink
     public bool IsBlinkAnimating()
     {
         return isAnimating;
