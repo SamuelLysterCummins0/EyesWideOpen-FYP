@@ -368,6 +368,10 @@ public class ProceduralDungeonGenerator : MonoBehaviour
                                     dungeonWidth, dungeonHeight, tileSize, levelHeight);
         }
         pendingNavMeshLevels.Clear();
+
+        // Move the player into level 0's spawn room now that generation and NavMesh are ready
+        if (GameManager.Instance != null)
+            GameManager.Instance.PlacePlayerAtSpawnRoom();
     }
 
     void GenerateLevel(int levelIndex, int attemptNumber = 1)
@@ -557,7 +561,22 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         AddDecorations(levelParent);
         PlaceStairsOnEdge(levelParent, levelIndex);
 
+        // Set up safe room doors on the entrance tile (one step inward from the stairs)
+        SafeRoomSetup safeRoom = FindObjectOfType<SafeRoomSetup>();
+        if (safeRoom != null)
+            safeRoom.SetupLevel(this, levelIndex, levelParent);
+
+        // Set up the player spawn room on a different perimeter edge of this level
+        SpawnRoomSetup spawnRoom = FindObjectOfType<SpawnRoomSetup>();
+        if (spawnRoom != null)
+            spawnRoom.SetupLevel(this, levelIndex, levelParent);
+
         SetupKeypads();
+
+        // Notify CodeNumberManager so it can spawn collectible code numbers for this level
+        CodeNumberManager codeManager = FindObjectOfType<CodeNumberManager>();
+        if (codeManager != null)
+            codeManager.InitializeForLevel(this, levelIndex, startX, startZ);
 
         // Save this level's configs for gizmos
         TileConfig[,] levelConfigsCopy = new TileConfig[dungeonWidth, dungeonHeight];
@@ -1665,6 +1684,16 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         DungeonNavMeshSetup navSetup = GetComponent<DungeonNavMeshSetup>();
         if (navSetup != null)
             navSetup.ClearAllSpawns();
+
+        // Clear safe room doors
+        SafeRoomSetup safeRoom = FindObjectOfType<SafeRoomSetup>();
+        if (safeRoom != null)
+            safeRoom.ClearAll();
+
+        // Clear spawn room doors and spawn points
+        SpawnRoomSetup spawnRoom = FindObjectOfType<SpawnRoomSetup>();
+        if (spawnRoom != null)
+            spawnRoom.ClearAll();
 
         // Clear all level parents and their children
         if (levelParents != null)

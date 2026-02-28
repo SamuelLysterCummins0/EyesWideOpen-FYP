@@ -11,7 +11,7 @@ public class DungeonNavMeshSetup : MonoBehaviour
     public GameObject applePrefab;
 
     [Header("Spawn Settings")]
-    public int baseNPCsPerLevel = 2;
+    public int baseNPCsPerLevel = 2; // Level 0 gets this many
     public float spawnZoneSize = 4f;
     public float minDistanceFromPlayer = 15f;
     public float minDistanceBetweenNPCs = 10f;
@@ -30,11 +30,14 @@ public class DungeonNavMeshSetup : MonoBehaviour
     {
 
         SetTilesLayer(levelParent, levelIndex);
+        // 1. Bake NavMesh for this level
         BakeNavMesh(levelParent, levelIndex);
 
+        // 2. Create spawn zones based on room tiles
         List<Transform> spawnZones = CreateSpawnZones(levelParent, levelIndex, configs,
                                                       dungeonWidth, dungeonHeight, tileSize, levelHeight);
 
+        // 3. Setup NPC spawn manager
         SetupSpawnManager(levelParent, levelIndex, spawnZones);
     }
 
@@ -42,6 +45,10 @@ public class DungeonNavMeshSetup : MonoBehaviour
     {
         NavMeshSurface navSurface = levelParent.AddComponent<NavMeshSurface>();
         navSurface.collectObjects = CollectObjects.Children;
+        // Default geometry source (RenderMeshes) — do NOT use PhysicsColliders here.
+        // The WallBarrier objects from DungeonWallSealer are collider-only with no renderer,
+        // so PhysicsColliders mode picks them up and carves the NavMesh exactly at tile seams,
+        // breaking connectivity between tiles. RenderMeshes ignores them entirely.
         navSurface.BuildNavMesh();
         Debug.Log($"Level {levelIndex}: NavMesh baked successfully");
     }
@@ -54,6 +61,7 @@ public class DungeonNavMeshSetup : MonoBehaviour
         List<Transform> zones = new List<Transform>();
         float levelY = levelIndex * -levelHeight;
 
+        // Create spawn zones at room tiles (safer for NPC navigation)
         for (int x = 0; x < dungeonWidth; x++)
         {
             for (int z = 0; z < dungeonHeight; z++)
@@ -62,11 +70,14 @@ public class DungeonNavMeshSetup : MonoBehaviour
 
                 ProceduralDungeonGenerator.TileConfig config = configs[x, z];
 
+                // Only spawn in room tiles (Open or Wall edges only)
                 if (config.IsRoomTile() && !config.IsFullyOpen())
                 {
+                    // Skip perimeter tiles
                     bool isEdge = x == 0 || x == dungeonWidth - 1 || z == 0 || z == dungeonHeight - 1;
                     if (isEdge) continue;
 
+                    // Create spawn zone cube
                     GameObject zoneObj = new GameObject($"SpawnZone_{x}_{z}");
                     zoneObj.transform.parent = levelParent.transform;
                     zoneObj.transform.position = new Vector3(x * tileSize, levelY + 0.5f, z * tileSize);
@@ -77,6 +88,7 @@ public class DungeonNavMeshSetup : MonoBehaviour
             }
         }
 
+        // Fallback: if no zones created, create central zone
         if (zones.Count == 0)
         {
             GameObject centerZone = new GameObject("SpawnZone_Center");
@@ -99,6 +111,7 @@ public class DungeonNavMeshSetup : MonoBehaviour
             return;
         }
 
+        // Instantiate spawn manager for this level
         GameObject managerObj = Instantiate(npcSpawnManagerPrefab, levelParent.transform);
         managerObj.name = $"NPCSpawnManager_Level_{levelIndex}";
 
@@ -108,6 +121,7 @@ public class DungeonNavMeshSetup : MonoBehaviour
             spawnManager = managerObj.AddComponent<NPCSpawnManager>();
         }
 
+        // Configure spawn manager
         spawnManager.npcPrefab = npcPrefab;
         spawnManager.applePrefab = applePrefab;
         spawnManager.spawnZones = spawnZones;
@@ -115,16 +129,18 @@ public class DungeonNavMeshSetup : MonoBehaviour
         spawnManager.minDistanceFromPlayer = minDistanceFromPlayer;
         spawnManager.minDistanceBetweenNPCs = minDistanceBetweenNPCs;
 
+        // Find player
         Transform player = GameObject.FindGameObjectWithTag("Player")?.transform;
         if (player != null)
         {
             spawnManager.player = player;
         }
 
+        // Setup waves - more NPCs on deeper levels
         spawnManager.spawnWaves = new List<NPCSpawnManager.SpawnWave>();
         NPCSpawnManager.SpawnWave wave = new NPCSpawnManager.SpawnWave();
         wave.waveName = $"Level {levelIndex} Initial Spawn";
-        wave.numberOfNPCsToSpawn = baseNPCsPerLevel + levelIndex;
+        wave.numberOfNPCsToSpawn = baseNPCsPerLevel + levelIndex; // Level 0=2, Level 1=3, Level 2=4, etc.
         wave.numberOfApplesToSpawn = 1;
         spawnManager.spawnWaves.Add(wave);
 
@@ -143,8 +159,23 @@ public class DungeonNavMeshSetup : MonoBehaviour
         levelSpawnManagers.Clear();
     }
 
+    // Re-randomises NPC positions for a single level — called on player respawn.
+    public void RespawnNPCsForLevel(int levelIndex)
+    {
+        if (levelIndex < 0 || levelIndex >= levelSpawnManagers.Count)
+        {
+            Debug.LogWarning($"DungeonNavMeshSetup: No spawn manager for level {levelIndex}");
+            return;
+        }
+
+        NPCSpawnManager manager = levelSpawnManagers[levelIndex];
+        if (manager != null)
+            manager.RespawnAll();
+    }
+
     private void SetTilesLayer(GameObject levelParent, int levelIndex)
     {
+        // Set all tiles to Obstacles layer so NPCs can detect them
         int obstacleLayer = LayerMask.NameToLayer("Obstacle");
         if (obstacleLayer == -1)
         {

@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 public class GazeCalibration : MonoBehaviour
 {
@@ -12,13 +13,16 @@ public class GazeCalibration : MonoBehaviour
     [SerializeField] private GameObject calibrationPanel;
     [SerializeField] private RectTransform targetDot;
     [SerializeField] private Text instructionText;
+    [SerializeField] private Image progressRing;
 
     [Header("Calibration Settings")]
     [SerializeField] private float dotSize = 60f;
     [SerializeField] private float edgeMargin = 150f;
     [SerializeField] private float visualEdgeMargin = 50f;
-    [SerializeField] private float collectionTime = 1.5f;
-    [SerializeField] private int samplesPerPoint = 50;
+    [SerializeField] private float collectionTime = 1.5f; // Increased from 1f
+    [SerializeField] private int samplesPerPoint = 50; // Increased from 30
+    [SerializeField] private bool rejectOutliers = true;
+    [SerializeField][Range(0f, 1f)] private float outlierThreshold = 0.15f; // Filter samples > 15% away from median
 
     [Header("Sensitivity Boost")]
     [SerializeField][Range(0.5f, 3f)] private float horizontalBoost = 1.3f;
@@ -33,14 +37,16 @@ public class GazeCalibration : MonoBehaviour
     [Header("Visual Feedback")]
     [SerializeField] private Color targetColor = new Color(1f, 0.8f, 0f);
     [SerializeField] private Color collectingColor = Color.green;
+    [SerializeField] private AudioClip pointCompleteSound;
 
-    // 5-point calibration (center + cardinal directions)
-    private Vector2[] screenPoints = new Vector2[5];
-    private Vector2[] rawGazePoints = new Vector2[5];
+    // 9-point calibration
+    private Vector2[] screenPoints = new Vector2[9];
+    private Vector2[] rawGazePoints = new Vector2[9];
 
     private int currentPoint = 0;
     private bool isCalibrating = false;
     private bool isWaitingForConfirmation = false;
+    private AudioSource audioSource;
 
     private float pulseTime = 0f;
 
@@ -49,6 +55,12 @@ public class GazeCalibration : MonoBehaviour
         if (calibrationPanel != null)
         {
             calibrationPanel.SetActive(false);
+        }
+
+        audioSource = GetComponent<AudioSource>();
+        if (audioSource == null)
+        {
+            audioSource = gameObject.AddComponent<AudioSource>();
         }
 
         LoadCalibration();
@@ -121,6 +133,11 @@ public class GazeCalibration : MonoBehaviour
         targetDot.localScale = Vector3.one;
         pulseTime = 0f;
 
+        if (progressRing != null)
+        {
+            progressRing.fillAmount = 0f;
+        }
+
         instructionText.text = $"<size=36><b>{pointName}</b></size>\n\n" +
                               $"Point {pointIndex + 1} of {screenPoints.Length}\n\n" +
                               $"Look at the dot with your eyes\n" +
@@ -156,6 +173,13 @@ public class GazeCalibration : MonoBehaviour
             }
 
             timer += Time.deltaTime;
+
+            float progress = Mathf.Min(timer / collectionTime, (float)samples.Count / samplesPerPoint);
+            if (progressRing != null)
+            {
+                progressRing.fillAmount = progress;
+            }
+
             yield return null;
         }
 
@@ -166,6 +190,13 @@ public class GazeCalibration : MonoBehaviour
         }
         else
         {
+            // Filter outliers if enabled
+            if (rejectOutliers && samples.Count >= 10)
+            {
+                samples = FilterOutliers(samples);
+                Debug.Log($"Point {pointIndex + 1}: Kept {samples.Count} samples after outlier rejection");
+            }
+
             // Average samples
             Vector2 sum = Vector2.zero;
             foreach (var sample in samples)
@@ -194,8 +225,40 @@ public class GazeCalibration : MonoBehaviour
         }
 
         targetDot.localScale = Vector3.one * 1.5f;
+        if (audioSource != null && pointCompleteSound != null)
+        {
+            audioSource.PlayOneShot(pointCompleteSound);
+        }
 
         yield return new WaitForSeconds(0.3f);
+    }
+
+    private List<Vector2> FilterOutliers(List<Vector2> samples)
+    {
+        if (samples.Count < 5) return samples;
+
+        // Calculate median
+        var sortedX = samples.OrderBy(s => s.x).ToList();
+        var sortedY = samples.OrderBy(s => s.y).ToList();
+
+        Vector2 median = new Vector2(
+            sortedX[sortedX.Count / 2].x,
+            sortedY[sortedY.Count / 2].y
+        );
+
+        // Filter samples that are too far from median
+        List<Vector2> filtered = new List<Vector2>();
+        foreach (var sample in samples)
+        {
+            float distance = Vector2.Distance(sample, median);
+            if (distance < outlierThreshold)
+            {
+                filtered.Add(sample);
+            }
+        }
+
+        // Return filtered list if it has enough samples, otherwise return original
+        return filtered.Count >= 5 ? filtered : samples;
     }
 
     private void FinishCalibration()
@@ -305,6 +368,10 @@ public class GazeCalibration : MonoBehaviour
         screenPoints[2] = new Vector2(Screen.width - edgeMargin, centerY);
         screenPoints[3] = new Vector2(centerX, Screen.height - edgeMargin);
         screenPoints[4] = new Vector2(centerX, edgeMargin);
+        screenPoints[5] = new Vector2(edgeMargin, Screen.height - edgeMargin);
+        screenPoints[6] = new Vector2(Screen.width - edgeMargin, Screen.height - edgeMargin);
+        screenPoints[7] = new Vector2(edgeMargin, edgeMargin);
+        screenPoints[8] = new Vector2(Screen.width - edgeMargin, edgeMargin);
     }
 
     private Vector2 CalculateVisualPosition(int pointIndex)
@@ -319,6 +386,10 @@ public class GazeCalibration : MonoBehaviour
             case 2: return new Vector2(Screen.width - visualEdgeMargin, centerY); // RIGHT
             case 3: return new Vector2(centerX, Screen.height - visualEdgeMargin); // TOP
             case 4: return new Vector2(centerX, visualEdgeMargin); // BOTTOM
+            case 5: return new Vector2(visualEdgeMargin, Screen.height - visualEdgeMargin); // TOP-LEFT
+            case 6: return new Vector2(Screen.width - visualEdgeMargin, Screen.height - visualEdgeMargin); // TOP-RIGHT
+            case 7: return new Vector2(visualEdgeMargin, visualEdgeMargin); // BOTTOM-LEFT
+            case 8: return new Vector2(Screen.width - visualEdgeMargin, visualEdgeMargin); // BOTTOM-RIGHT
             default: return new Vector2(centerX, centerY);
         }
     }
@@ -330,7 +401,11 @@ public class GazeCalibration : MonoBehaviour
             "LEFT",
             "RIGHT",
             "TOP",
-            "BOTTOM"
+            "BOTTOM",
+            "TOP-LEFT",
+            "TOP-RIGHT",
+            "BOTTOM-LEFT",
+            "BOTTOM-RIGHT"
         };
         return index < names.Length ? names[index] : $"POINT {index + 1}";
     }
@@ -357,7 +432,7 @@ public class GazeCalibration : MonoBehaviour
             return;
         }
 
-        int pointCount = PlayerPrefs.GetInt("GazeCal_PointCount", 5);
+        int pointCount = PlayerPrefs.GetInt("GazeCal_PointCount", 9);
         if (pointCount != screenPoints.Length)
         {
             Debug.LogWarning($"Saved calibration mismatch");
@@ -382,7 +457,7 @@ public class GazeCalibration : MonoBehaviour
     {
         PlayerPrefs.DeleteKey("GazeCal_Valid");
         PlayerPrefs.DeleteKey("GazeCal_PointCount");
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 9; i++)
         {
             PlayerPrefs.DeleteKey($"GazeCal_Raw_{i}_X");
             PlayerPrefs.DeleteKey($"GazeCal_Raw_{i}_Y");
@@ -429,6 +504,23 @@ public class GazeCalibration : MonoBehaviour
         targetDot.anchorMin = Vector2.zero;
         targetDot.anchorMax = Vector2.zero;
         targetDot.pivot = new Vector2(0.5f, 0.5f);
+
+        GameObject progressObj = new GameObject("ProgressRing");
+        progressObj.transform.SetParent(dotObj.transform, false);
+
+        progressRing = progressObj.AddComponent<Image>();
+        progressRing.color = new Color(1f, 1f, 1f, 0.5f);
+        progressRing.type = Image.Type.Filled;
+        progressRing.fillMethod = Image.FillMethod.Radial360;
+        progressRing.fillOrigin = 2;
+        progressRing.fillAmount = 0f;
+
+        RectTransform progressRect = progressObj.GetComponent<RectTransform>();
+        progressRect.sizeDelta = new Vector2(dotSize + 30, dotSize + 30);
+        progressRect.anchorMin = new Vector2(0.5f, 0.5f);
+        progressRect.anchorMax = new Vector2(0.5f, 0.5f);
+        progressRect.anchoredPosition = Vector2.zero;
+        progressObj.transform.SetAsFirstSibling();
 
         GameObject textObj = new GameObject("InstructionText");
         textObj.transform.SetParent(panelObj.transform, false);

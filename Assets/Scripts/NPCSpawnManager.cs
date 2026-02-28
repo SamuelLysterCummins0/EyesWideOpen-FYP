@@ -16,14 +16,14 @@ public class NPCSpawnManager : MonoBehaviour
     public GameObject applePrefab;
     public Transform player;
     public List<SpawnWave> spawnWaves;
-    public LayerMask obstaclesLayer;
+    public LayerMask obstaclesLayer; // Make it public, not private
 
     // Spawn zone settings
     public List<Transform> spawnZones = new List<Transform>();
     public float minDistanceFromPlayer = 15f;
     public float minDistanceBetweenNPCs = 10f;
     public bool showSpawnZones = true;
-
+    
     private List<GameObject> activeNPCs = new List<GameObject>();
     private List<GameObject> activeApples = new List<GameObject>();
     private Camera playerCamera;
@@ -53,6 +53,9 @@ public class NPCSpawnManager : MonoBehaviour
         }
 
         Debug.Log($"{name}: NPCSpawnManager started with {spawnZones.Count} spawn zones");
+
+        // Only subscribe to car parts if we're using that system
+        // CarPartsCollect.OnCarPartCollected += HandleCarPartCollected;
 
         // Spawn initial wave
         if (spawnWaves != null && spawnWaves.Count > 0)
@@ -146,9 +149,21 @@ public class NPCSpawnManager : MonoBehaviour
         npcMovement.agent = npc.GetComponent<NavMeshAgent>();
         npcMovement.jumpscareAudio = npc.GetComponent<AudioSource>();
 
+        // CRITICAL FIX: Set obstacles layer for raycasting
         npcMovement.obstaclesLayer = obstaclesLayer;
 
-        Debug.Log($"NPC Setup Complete - ObstaclesLayer: {npcMovement.obstaclesLayer.value}");
+        // CRITICAL FIX: Auto-find blink detector and vignette
+        if (npcMovement.blinkDetector == null)
+        {
+            npcMovement.blinkDetector = FindObjectOfType<BlinkDetector>();
+        }
+
+        if (npcMovement.vignetteController == null)
+        {
+            npcMovement.vignetteController = FindObjectOfType<BlinkVignetteController>();
+        }
+
+        Debug.Log($"NPC Setup Complete - ObstaclesLayer: {npcMovement.obstaclesLayer.value}, BlinkDetector: {npcMovement.blinkDetector != null}, Vignette: {npcMovement.vignetteController != null}");
     }
 
     private Vector3 GetValidSpawnPosition()
@@ -172,7 +187,7 @@ public class NPCSpawnManager : MonoBehaviour
             if (NavMesh.SamplePosition(worldPoint, out hit, 2.0f, NavMesh.AllAreas))
             {
                 Vector3 finalPosition = hit.position;
-
+                
                 if (IsValidSpawnPosition(finalPosition))
                 {
                     return finalPosition;
@@ -195,7 +210,7 @@ public class NPCSpawnManager : MonoBehaviour
 
         Vector3 directionToPlayer = (player.position - position).normalized;
         float angle = Vector3.Angle(-directionToPlayer, playerCamera.transform.forward);
-
+        
         if (angle > 60f) return false;
 
         RaycastHit hit;
@@ -204,7 +219,7 @@ public class NPCSpawnManager : MonoBehaviour
             if (hit.transform != player.transform)
                 return false;
         }
-
+        
         return true;
     }
 
@@ -234,5 +249,33 @@ public class NPCSpawnManager : MonoBehaviour
         {
             activeApples.Remove(apple);
         }
+    }
+
+    // Destroys all active NPCs and apples for this level.
+    public void ClearSpawns()
+    {
+        foreach (var npc in activeNPCs)
+        {
+            if (npc != null)
+                Destroy(npc);
+        }
+        activeNPCs.Clear();
+
+        foreach (var apple in activeApples)
+        {
+            if (apple != null)
+                Destroy(apple);
+        }
+        activeApples.Clear();
+
+    }
+
+    // Clears all current NPCs then re-randomises their positions across the spawn zones.
+    // Called by GameManager on respawn for the current level.
+    public void RespawnAll()
+    {
+        ClearSpawns();
+        if (spawnWaves != null && spawnWaves.Count > 0)
+            SpawnWaveOfNPCs(0);
     }
 }

@@ -9,12 +9,15 @@ public class ItemPickUp : MonoBehaviour
 
     private Transform player;
     private TextMeshProUGUI interactionText;
+    private static bool hasShownMaskInstructions = false;
+    private static bool hasShownFlareInstructions = false;
+    private static bool hasShownConsumableInstructions = false;
 
     void Start()
     {
         player = GameObject.FindWithTag("Player")?.transform;
         interactionText = GetComponentInChildren<TextMeshProUGUI>();
-
+        
         if (interactionText != null)
         {
             interactionText.enabled = false;
@@ -23,10 +26,11 @@ public class ItemPickUp : MonoBehaviour
 
     void Update()
     {
-        if (player == null || interactionText == null)
+        if (player == null || interactionText == null || GameManager.Instance == null) 
             return;
 
-        if (Vector3.Distance(player.position, transform.position) <= pickUpRadius)
+        if (!GameManager.Instance.IsDeathScreenActive() && 
+            Vector3.Distance(player.position, transform.position) <= pickUpRadius)
         {
             interactionText.enabled = true;
 
@@ -45,6 +49,22 @@ public class ItemPickUp : MonoBehaviour
     {
         if (InventoryManager.Instance != null)
         {
+            if (Item.itemType == Item.ItemType.Mask && !hasShownMaskInstructions)
+            {
+                InstructionUI.Instance.ShowPanel(Item.itemType);
+                hasShownMaskInstructions = true;
+            }
+            else if (Item.itemType == Item.ItemType.Flare && !hasShownFlareInstructions)
+            {
+                InstructionUI.Instance.ShowPanel(Item.itemType);
+                hasShownFlareInstructions = true;
+            }
+            else if (Item.itemType == Item.ItemType.Consumable && !hasShownConsumableInstructions)
+            {
+                InstructionUI.Instance.ShowPanel(Item.itemType);
+                hasShownConsumableInstructions = true;
+            }
+
             InventoryManager.Instance.Add(Item);
             Destroy(gameObject);
         }
