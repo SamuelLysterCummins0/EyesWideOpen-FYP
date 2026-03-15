@@ -4,8 +4,12 @@ public class HeartbeatManager : MonoBehaviour
 {
     public static HeartbeatManager Instance;
 
-    public AudioClip heartbeatAudioClip;
-    public float heartbeatVolume = 0.3f;
+    public AudioClip heartbeatAudioClip; // Reference to your heartbeat audio clip
+    public float minHeartbeatVolume = 0.1f;
+    public float maxHeartbeatVolume = 1f;
+    public float minHeartbeatPitch = 0.8f;
+    public float maxHeartbeatPitch = 1.5f;
+    public float heartbeatDistanceThreshold = 10f;
 
     private AudioSource heartbeatAudio;
 
@@ -24,19 +28,24 @@ public class HeartbeatManager : MonoBehaviour
     private void Start()
     {
         heartbeatAudio = gameObject.AddComponent<AudioSource>();
-        heartbeatAudio.clip = heartbeatAudioClip;
+        heartbeatAudio.clip = heartbeatAudioClip; // Assign your heartbeat audio clip
         heartbeatAudio.loop = true;
-        heartbeatAudio.volume = heartbeatVolume;
+        heartbeatAudio.volume = minHeartbeatVolume;
+        heartbeatAudio.pitch = minHeartbeatPitch;
         heartbeatAudio.Play();
     }
 
     public void UpdateHeartbeat(float distanceToPlayer)
     {
-        // Just keep playing at constant volume for now
+        float t = Mathf.Clamp01(1f - (distanceToPlayer / heartbeatDistanceThreshold));
+
+        heartbeatAudio.volume = Mathf.Lerp(minHeartbeatVolume, maxHeartbeatVolume, t);
+        heartbeatAudio.pitch = Mathf.Lerp(minHeartbeatPitch, maxHeartbeatPitch, t);
     }
 
     public void ResetHeartbeat()
-    {
-        // Nothing to reset yet
-    }
+{
+    heartbeatAudio.volume = minHeartbeatVolume;
+    heartbeatAudio.pitch = minHeartbeatPitch;
+}
 }

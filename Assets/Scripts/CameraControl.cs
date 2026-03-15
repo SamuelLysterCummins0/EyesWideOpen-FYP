@@ -69,22 +69,38 @@ playerCameraTransform.parent = null;
     private IEnumerator ReturnCameraToOriginal()
     {
         isReturningCamera = true;
+        Vector3 targetPosition = playerCameraTransform.position;
+        Quaternion targetRotation = playerCameraTransform.rotation;
 
-        transform.position = playerCameraTransform.position;
-        transform.rotation = playerCameraTransform.rotation;
+        float elapsedTime = 0f;
+        float returnDuration = 0.5f;
 
-        playerCameraTransform.parent = originalParent;
+        while (elapsedTime < returnDuration)
+        {
+            elapsedTime += Time.deltaTime;
+            float percentage = elapsedTime / returnDuration;
+            float smoothPercentage = percentage * percentage * (3f - 2f * percentage);
+
+            transform.position = Vector3.Lerp(transform.position, targetPosition, smoothPercentage);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, smoothPercentage);
+
+            yield return null;
+        }
+
+        transform.position = targetPosition;
+        transform.rotation = targetRotation;
+
+ playerCameraTransform.parent = originalParent;
 
         isInJumpscare = false;
         isReturningCamera = false;
 
-        if (playerController != null)
+        if (!GameManager.Instance.IsDeathScreenActive() && playerController != null)
         {
             playerController.enabled = true;
         }
 
         UpdateOriginalTransform();
-        yield return null;
     }
 
     public void ResetCameraState()
