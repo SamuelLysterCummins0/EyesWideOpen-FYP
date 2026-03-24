@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eyes Wide Open — Final Year Project</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg:        #0d0d0d;
+      --surface:   #151515;
+      --border:    #2a2a2a;
+      --red:       #c0392b;
+      --red-hover: #e74c3c;
+      --white:     #f0f0f0;
+      --muted:     #888;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--white);
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      line-height: 1.7;
+    }
+
+    /* ── NAV ── */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 40px;
+      background: rgba(13, 13, 13, 0.85);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+    }
+
+    .nav-logo {
+      font-family: 'Cinzel', serif;
+      font-size: 0.85rem;
+      letter-spacing: 0.15em;
+      color: var(--red);
+      text-transform: uppercase;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.82rem;
+      letter-spacing: 0.05em;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--white);
+    }
+
+    /* ── HERO ── */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 100px 24px 60px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* subtle radial glow behind title */
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -55%);
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(192,57,43,0.08) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero h1 {
+      font-family: 'Cinzel', serif;
+      font-size: clamp(2.6rem, 7vw, 5.5rem);
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      line-height: 1.1;
+      text-transform: uppercase;
+    }
+
+    .hero h1 span {
+      color: var(--red);
+    }
+
+    .hero-subtitle {
+      margin-top: 14px;
+      font-size: 0.9rem;
+      letter-spacing: 0.2em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .hero-tagline {
+      margin-top: 28px;
+      font-size: 1.1rem;
+      color: #ccc;
+      max-width: 520px;
+      font-style: italic;
+    }
+
+    .hero-buttons {
+      margin-top: 44px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      justify-content: center;
+    }
+
+    .btn {
+      display: inline-block;
+      padding: 12px 28px;
+      border-radius: 3px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--red);
+      color: #fff;
+      border: 1px solid var(--red);
+    }
+
+    .btn-primary:hover {
+      background: var(--red-hover);
+      border-color: var(--red-hover);
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--white);
+      border: 1px solid var(--border);
+    }
+
+    .btn-outline:hover {
+      border-color: #555;
+      background: rgba(255,255,255,0.04);
+    }
+
+    /* ── SECTIONS ── */
+    section {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 80px 24px;
+    }
+
+    .section-label {
+      font-size: 0.72rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: var(--red);
+      margin-bottom: 12px;
+    }
+
+    h2 {
+      font-family: 'Cinzel', serif;
+      font-size: 1.8rem;
+      font-weight: 400;
+      margin-bottom: 24px;
+      color: var(--white);
+    }
+
+    p {
+      color: #bbb;
+      font-size: 1rem;
+      margin-bottom: 16px;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 24px;
+    }
+
+    /* ── ABOUT + PHOTO ROW ── */
+    .about-row {
+      display: flex;
+      gap: 48px;
+      align-items: flex-start;
+    }
+
+    .about-text {
+      flex: 1;
+    }
+
+    .photo-card {
+      flex-shrink: 0;
+      width: 200px;
+      text-align: center;
+    }
+
+    .photo-card img,
+    .photo-placeholder {
+      width: 200px;
+      height: 200px;
+      border-radius: 4px;
+      object-fit: cover;
+      display: block;
+    }
+
+    .photo-placeholder {
+      background: var(--surface);
+      border: 1px dashed var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+
+    .photo-name {
+      margin-top: 10px;
+      font-size: 0.78rem;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
+    /* ── FEATURES ── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      margin-top: 8px;
+    }
+
+    .feature-item {
+      padding: 32px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .feature-item:nth-child(odd) {
+      padding-right: 48px;
+      border-right: 1px solid var(--border);
+    }
+
+    .feature-item:nth-child(even) {
+      padding-left: 48px;
+    }
+
+    .feature-item:nth-last-child(-n+2) {
+      border-bottom: none;
+    }
+
+    .feature-num {
+      font-family: 'Cinzel', serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.2em;
+      color: var(--red);
+      margin-bottom: 12px;
+    }
+
+    .feature-item h3 {
+      font-size: 1rem;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      margin-bottom: 10px;
+      color: var(--white);
+    }
+
+    .feature-item p {
+      font-size: 0.88rem;
+      color: var(--muted);
+      margin: 0;
+      line-height: 1.75;
+    }
+
+    /* ── TECH TAGS ── */
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .tag {
+      padding: 6px 14px;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      color: #aaa;
+    }
+
+    /* ── LINKS SECTION ── */
+    .links-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-top: 8px;
+    }
+
+    .link-card {
+      flex: 1;
+      min-width: 200px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 20px;
+      text-decoration: none;
+      color: var(--white);
+      transition: border-color 0.2s, background 0.2s;
+    }
+
+    .link-card:hover {
+      border-color: var(--red);
+      background: rgba(192,57,43,0.05);
+    }
+
+    .link-card h3 {
+      font-size: 0.9rem;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .link-card p {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 30px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .footer-left {
+      font-family: 'Cinzel', serif;
+      letter-spacing: 0.08em;
+    }
+
+    .footer-right {
+      letter-spacing: 0.04em;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      nav {
+        padding: 14px 20px;
+      }
+
+      .nav-links {
+        gap: 16px;
+      }
+
+      .about-row {
+        flex-direction: column-reverse;
+        align-items: center;
+      }
+
+      .photo-card {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .feature-item:nth-child(odd) {
+        padding-right: 0;
+        border-right: none;
+      }
+
+      .feature-item:nth-child(even) {
+        padding-left: 0;
+      }
+
+      .feature-item:nth-last-child(-n+2) {
+        border-bottom: 1px solid var(--border);
+      }
+
+      .feature-item:last-child {
+        border-bottom: none;
+      }
+
+      footer {
+        flex-direction: column;
+        text-align: center;
+        padding: 24px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <span class="nav-logo">Eyes Wide Open</span>
+    <ul class="nav-links">
+      <li><a href="#about">About</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#links">Links</a></li>
+    </ul>
+  </nav>
+
+  <div class="hero">
+    <h1>Eyes <span>Wide</span> Open</h1>
+    <p class="hero-subtitle">Final Year Project &mdash; BSc (Hons) Computer Science &mdash; SETU &mdash; 2025/26</p>
+    <p class="hero-tagline">A Unity Horror Game with Real-Time Eye Tracking</p>
+    <div class="hero-buttons">
+      <a href="" class="btn btn-primary" target="_blank">Watch Demo</a>
+      <a href="EyesWideOpenPoster.png" class="btn btn-outline" target="_blank">View Poster</a>
+      <a href="https://github.com/SamuelLysterCummins0/EyesWideOpen-FYP.git" class="btn btn-outline" target="_blank">GitHub Repo</a>
+    </div>
+  </div>
+
+  <hr class="divider" />
+
+  <section id="about">
+    <p class="section-label">About the Project</p>
+    <h2>What is Eyes Wide Open?</h2>
+    <div class="about-row">
+      <div class="about-text">
+        <p>
+          Eyes Wide Open is a first-person horror game where your actual eyes replace every
+          traditional control. The entities haunting these endless backrooms corridors obey one
+          rule: they only move when you're not watching.
+        </p>
+        <p>
+          Using real-time webcam facial tracking through MediaPipe, the game detects every blink
+          and reads your gaze direction, turning your own biological limitations into the core
+          survival mechanic.
+        </p>
+        <p>
+          Developed as a Fourth Year Final Year Project at South East Technological University
+          (SETU), Department of Computing &amp; Mathematics.
+        </p>
+      </div>
+      <div class="photo-card">
+        <img src="photo.jpg" alt="Sam Lyster" />
+        <p class="photo-name">Sam Lyster<br/>Student No: 20102256</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="features">
+    <p class="section-label">Key Features</p>
+    <h2>How It Works</h2>
+    <div class="features-grid">
+      <div class="feature-item">
+        <p class="feature-num">01 &mdash; Blink Detection</p>
+        <h3>Blink Detection</h3>
+        <p>The Eye Aspect Ratio (EAR) algorithm runs across 468 facial landmarks in real time to catch every blink. The moment your eyes close, enemies are free to move. Blinking also works alongside head tracking to interact with objects in the world, so both mechanics feed into each other throughout the game.</p>
+      </div>
+      <div class="feature-item">
+        <p class="feature-num">02 &mdash; Head Tracking</p>
+        <h3>Head Tracking</h3>
+        <p>The player's head position is tracked in real time using the nose tip landmark from MediaPipe, which drives a cursor on screen. Doors, keypads and collectibles all respond to where you're facing and for how long. A 5-point calibration system runs at the start of each session to account for different setups and webcam positions.</p>
+      </div>
+      <div class="feature-item">
+        <p class="feature-num">03 &mdash; Enemy AI</p>
+        <h3>Enemy AI</h3>
+        <p>Entities freeze the moment you look at them directly. They only activate once they've been observed, so nothing chases you from off-screen before you've even seen it. All movement is timed with the blink vignette blackout so enemies are never visibly teleporting and the illusion stays intact.</p>
+      </div>
+      <div class="feature-item">
+        <p class="feature-num">04 &mdash; Procedural Levels</p>
+        <h3>Procedural Levels</h3>
+        <p>Tile prefabs slot together using edge-matching rules on every run, so no two layouts are the same. A connectivity check runs after generation to catch any isolated sections or dead ends, making sure every level is fully navigable. The backrooms layout changes each time, so the environment never becomes predictable.</p>
+      </div>
+    </div>
+
+    <br />
+    <p class="section-label" style="margin-top:32px;">Technologies Used</p>
+    <div class="tags">
+      <span class="tag">Unity 2022</span>
+      <span class="tag">C#</span>
+      <span class="tag">MediaPipe</span>
+      <span class="tag">GitHub</span>
+      <span class="tag">Trello</span>
+    </div>
+  </section>
+
+  <hr class="divider" />
+
+  <section id="links">
+    <p class="section-label">Project Resources</p>
+    <h2>Links</h2>
+    <div class="links-row">
+      <a href="EyesWideOpenPoster.png" class="link-card" target="_blank">
+        <div>
+          <h3>Project Poster</h3>
+          <p>View the poster</p>
+        </div>
+      </a>
+      <a href="" class="link-card" target="_blank">
+        <div>
+          <h3>Demo Video</h3>
+          <p>Watch a full gameplay demonstration</p>
+        </div>
+      </a>
+      <a href="https://github.com/SamuelLysterCummins0/EyesWideOpen-FYP.git" class="link-card" target="_blank">
+        <div>
+          <h3>GitHub Repository</h3>
+          <p>Browse the source code</p>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <footer>
+    <span class="footer-left">Eyes Wide Open &mdash; FYP 2024/25</span>
+    <span class="footer-right">Sam Lyster &bull; Student No: 20102256 &bull; BSc (Hons) Games Development &bull; SETU</span>
+  </footer>
+
+</body>
+</html>
