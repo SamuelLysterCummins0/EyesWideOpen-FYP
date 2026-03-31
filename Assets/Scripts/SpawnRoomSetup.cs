@@ -28,6 +28,9 @@ public class SpawnRoomSetup : MonoBehaviour
     // All spawned doors across all levels — used for cleanup on regeneration
     private List<GameObject> spawnedDoors = new List<GameObject>();
 
+    // Returns all spawn-room world positions so NPCSpawnManager can exclude the areas.
+    public List<Vector3> GetSpawnRoomPositions() => new List<Vector3>(spawnPoints.Values);
+
     public Vector3 GetSpawnPoint(int levelIndex)
     {
         if (spawnPoints.TryGetValue(levelIndex, out Vector3 point))
@@ -43,18 +46,38 @@ public class SpawnRoomSetup : MonoBehaviour
     {
         List<Vector2Int> stairsPosList = gen.StairsPositions;
 
+        // For level 0: use stairsPosList[0] (level 0's own stairs).
+        // For level 1+: the arrival tile is inward from the PREVIOUS level's stairs,
+        // so use stairsPosList[levelIndex - 1].
+        int stairsRef = levelIndex > 0 ? levelIndex - 1 : levelIndex;
         Vector2Int stairsPos = Vector2Int.zero;
-        bool hasStairs = stairsPosList != null && levelIndex < stairsPosList.Count;
+        bool hasStairs = stairsPosList != null && stairsRef < stairsPosList.Count;
         if (hasStairs)
-            stairsPos = stairsPosList[levelIndex];
-
-        // The staircase safe room entrance tile — we want to stay away from this
-        Vector2Int entranceTile = hasStairs ? GetStepInward(stairsPos, gen.DungeonWidth, gen.DungeonHeight) : new Vector2Int(-1, -1);
+            stairsPos = stairsPosList[stairsRef];
 
         int w = gen.DungeonWidth;
         int h = gen.DungeonHeight;
         float tileSize = gen.TileSize;
         float levelY = levelIndex * -gen.LevelHeight;
+
+        // For levels below 0: the spawn point is the stairway entrance tile —
+        // the same room SafeRoomSetup already equipped with doors when it ran.
+        // No new door placement is needed here; just register the spawn point and
+        // drop a checkpoint trigger so arriving on this level saves it as the active respawn.
+        if (levelIndex > 0 && hasStairs)
+        {
+            Vector2Int entrancePos = GetStepInward(stairsPos, w, h);
+            Vector3 entranceCenter = new Vector3(entrancePos.x * tileSize, levelY + doorSpawnY, entrancePos.y * tileSize);
+            spawnPoints[levelIndex] = entranceCenter + Vector3.up * spawnHeightOffset;
+
+            SpawnCheckpointTrigger(entranceCenter, levelIndex, tileSize, levelParent);
+
+            Debug.Log($"SpawnRoomSetup: Level {levelIndex} spawn point + checkpoint trigger placed at stairway entrance ({entrancePos.x},{entrancePos.y}).");
+            return;
+        }
+
+        // Level 0: find a dedicated perimeter spawn room far from the stairs.
+        Vector2Int entranceTile = hasStairs ? GetStepInward(stairsPos, w, h) : new Vector2Int(-1, -1);
 
         Vector2Int spawnPos = FindSpawnRoomTile(gen, stairsPos, entranceTile, hasStairs, w, h);
 
@@ -132,6 +155,47 @@ public class SpawnRoomSetup : MonoBehaviour
                 if (dist < minDistanceFromStairs) continue;
             }
 
+            // Outer-facing edge must be Wall — otherwise skipping door placement
+            // on that side leaves an open gap with no wall and no door.
+            string outerDir = GetOuterDirection(pos, w, h);
+            if (outerDir == "west"  && cfg.west  != ProceduralDungeonGenerator.EdgeType.Wall) continue;
+            if (outerDir == "east"  && cfg.east  != ProceduralDungeonGenerator.EdgeType.Wall) continue;
+            if (outerDir == "south" && cfg.south != ProceduralDungeonGenerator.EdgeType.Wall) continue;
+            if (outerDir == "north" && cfg.north != ProceduralDungeonGenerator.EdgeType.Wall) continue;
+
+            // Reject corner-adjacent positions — they touch two perimeter edges but
+            // GetOuterDirection only returns one, so the second side would be left open.
+            bool isCorner = (pos.x == 1     && pos.y == 1    ) ||
+                            (pos.x == 1     && pos.y == h - 2) ||
+                            (pos.x == w - 2 && pos.y == 1    ) ||
+                            (pos.x == w - 2 && pos.y == h - 2);
+            if (isCorner) continue;
+
+            // Must have at least one Open edge pointing inward with a real non-fill tile
+            // adjacent — ensures the spawn room actually connects into the dungeon.
+            bool hasValidInwardOpen = false;
+            if (outerDir != "north" && cfg.north == ProceduralDungeonGenerator.EdgeType.Open)
+            {
+                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(pos.x, pos.y + 1);
+                if (adj != null && adj.tileName != "Tiles_01_Fill") hasValidInwardOpen = true;
+            }
+            if (outerDir != "south" && cfg.south == ProceduralDungeonGenerator.EdgeType.Open)
+            {
+                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(pos.x, pos.y - 1);
+                if (adj != null && adj.tileName != "Tiles_01_Fill") hasValidInwardOpen = true;
+            }
+            if (outerDir != "east" && cfg.east == ProceduralDungeonGenerator.EdgeType.Open)
+            {
+                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(pos.x + 1, pos.y);
+                if (adj != null && adj.tileName != "Tiles_01_Fill") hasValidInwardOpen = true;
+            }
+            if (outerDir != "west" && cfg.west == ProceduralDungeonGenerator.EdgeType.Open)
+            {
+                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(pos.x - 1, pos.y);
+                if (adj != null && adj.tileName != "Tiles_01_Fill") hasValidInwardOpen = true;
+            }
+            if (!hasValidInwardOpen) continue;
+
             return pos;
         }
 
@@ -170,7 +234,9 @@ public class SpawnRoomSetup : MonoBehaviour
         bool skip = false)
     {
         if (skip) return;
-        if (edge == ProceduralDungeonGenerator.EdgeType.Wall) return;
+        // Only place doors at genuine wide-open junctions.
+        // Skipping Center/Left/Right prevents misaligned doors against corridor openings.
+        if (edge != ProceduralDungeonGenerator.EdgeType.Open) return;
         if (prefab == null)
         {
             Debug.LogWarning("SpawnRoomSetup: Door prefab not assigned for an open side.");
@@ -201,6 +267,26 @@ public class SpawnRoomSetup : MonoBehaviour
         if (perimeterPos.x == w - 1) return perimeterPos + new Vector2Int(-1, 0);
         if (perimeterPos.y == 0)     return perimeterPos + new Vector2Int(0, 1);
         return perimeterPos + new Vector2Int(0, -1);
+    }
+
+    // Spawns an invisible trigger at the stairway entrance tile so the player
+    // activates the checkpoint simply by walking into the room.
+    private void SpawnCheckpointTrigger(Vector3 center, int levelIndex, float tileSize, GameObject parent)
+    {
+        GameObject triggerObj = new GameObject($"SpawnCheckpoint_Level{levelIndex}");
+        triggerObj.transform.position = center;
+        triggerObj.transform.SetParent(parent.transform);
+
+        // Box covers most of the tile so the player can't slip through undetected.
+        BoxCollider col = triggerObj.AddComponent<BoxCollider>();
+        col.size = new Vector3(tileSize * 0.8f, 3f, tileSize * 0.8f);
+        col.isTrigger = true;
+
+        SpawnRoomCheckpoint checkpoint = triggerObj.AddComponent<SpawnRoomCheckpoint>();
+        checkpoint.Initialise(levelIndex);
+
+        // Track it so ClearAll() can destroy it on dungeon regeneration.
+        spawnedDoors.Add(triggerObj);
     }
 
     public void ClearAll()

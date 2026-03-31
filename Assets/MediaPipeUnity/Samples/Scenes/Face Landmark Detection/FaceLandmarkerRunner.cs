@@ -98,11 +98,6 @@ namespace Mediapipe.Unity.Sample.FaceLandmarkDetection
                 if (cameraSettings != null)
                 {
                     sourceTexture = cameraSettings.GetAdjustedTexture();
-                    // Visual confirmation - you should see this in console when adjusting sliders
-                    if (Time.frameCount % 120 == 0) // Every 2 seconds
-                    {
-                        Debug.Log($"Using adjusted texture: {sourceTexture.width}x{sourceTexture.height}");
-                    }
                 }
                 else
                 {

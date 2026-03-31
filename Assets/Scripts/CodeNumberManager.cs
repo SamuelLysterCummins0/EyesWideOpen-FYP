@@ -27,11 +27,20 @@ public class CodeNumberManager : MonoBehaviour
     [Header("References")]
     [SerializeField] private CodeNumberHUD hud;
 
-    // ── Runtime State ────────────────────────────────────────────────────────
-    private int[] generatedDigits = new int[4]; // The four individual digits
-    private bool[] digitsCollected = new bool[4];
-    private int collectedCount = 0;
-    private Keypad currentKeypad;
+    // ── Per-level state ───────────────────────────────────────────────────────
+    // Keeps digits, collection status, keypad ref, and spawned objects separate
+    // per level so generating level 1 doesn't destroy level 0's numbers.
+    private class LevelData
+    {
+        public int[]   digits    = new int[4];
+        public bool[]  collected = new bool[4];
+        public int     collectedCount = 0;
+        public Keypad  keypad;
+        public List<GameObject> numbers = new List<GameObject>();
+    }
+
+    private Dictionary<int, LevelData> levelStates = new Dictionary<int, LevelData>();
+    private int currentInitLevel = 0; // set at the top of InitializeForLevel
 
     // ── Unity Lifecycle ──────────────────────────────────────────────────────
     private void Awake()
@@ -51,29 +60,34 @@ public class CodeNumberManager : MonoBehaviour
     /// </summary>
     public void InitializeForLevel(ProceduralDungeonGenerator generator, int levelIndex, int startX, int startZ)
     {
-        ClearPreviousNumbers();
-        ResetState();
+        currentInitLevel = levelIndex;
+
+        // Only clear numbers that belong to THIS level — leaves other levels intact.
+        ClearLevelNumbers(levelIndex);
+
+        // Create (or overwrite) state for this level.
+        LevelData data = new LevelData();
+        levelStates[levelIndex] = data;
 
         // Generate 4 random digits (0-9, repeats allowed).
         for (int i = 0; i < 4; i++)
-            generatedDigits[i] = Random.Range(0, 10);
+            data.digits[i] = Random.Range(0, 10);
 
-        int combinedCode = (generatedDigits[0] * 1000) + (generatedDigits[1] * 100)
-                         + (generatedDigits[2] * 10) + generatedDigits[3];
+        int combinedCode = (data.digits[0] * 1000) + (data.digits[1] * 100)
+                         + (data.digits[2] * 10)   + data.digits[3];
 
-        Debug.Log($"[CodeNumberManager] Level {levelIndex} code: {combinedCode} ({generatedDigits[0]}{generatedDigits[1]}{generatedDigits[2]}{generatedDigits[3]})");
+        Debug.Log($"[CodeNumberManager] Level {levelIndex} code: {combinedCode} ({data.digits[0]}{data.digits[1]}{data.digits[2]}{data.digits[3]})");
 
-        // Auto-find HUD — pass true so inactive GameObjects are included.
-        // The panel may start disabled in the scene; without the flag FindObjectOfType skips it.
+        // Auto-find HUD.
         if (hud == null) hud = FindObjectOfType<CodeNumberHUD>(true);
         if (hud == null) Debug.LogWarning("[CodeNumberManager] CodeNumberHUD not found in scene.");
 
-        // Push code to keypad - player still can't use it until all digits collected.
-        currentKeypad = FindObjectOfType<Keypad>();
-        if (currentKeypad != null)
+        // Push code to keypad.
+        data.keypad = FindObjectOfType<Keypad>();
+        if (data.keypad != null)
         {
-            currentKeypad.SetCode(combinedCode);
-            currentKeypad.SetCodesCollected(false);
+            data.keypad.SetCode(combinedCode);
+            data.keypad.SetCodesCollected(false);
         }
         else
         {
@@ -89,10 +103,8 @@ public class CodeNumberManager : MonoBehaviour
             return;
         }
 
-        // Shuffle the list so we pick spread-out positions randomly.
         ShuffleList(reachable);
 
-        // Pick 4 positions that are spread far enough apart from each other.
         List<Vector3> chosenWorldPositions = new List<Vector3>();
         List<Vector2Int> chosenGridPositions = new List<Vector2Int>();
 
@@ -106,7 +118,6 @@ public class CodeNumberManager : MonoBehaviour
             Vector3? wallPos = FindValidWallSurface(tile, config, generator.TileSize, out Vector3 wallNormal);
             if (wallPos == null) continue;
 
-            // Enforce minimum spread between numbers.
             bool tooClose = false;
             foreach (Vector3 existing in chosenWorldPositions)
             {
@@ -121,8 +132,11 @@ public class CodeNumberManager : MonoBehaviour
             chosenWorldPositions.Add(wallPos.Value);
             chosenGridPositions.Add(gridPos);
 
-            // Spawn the CodeNumber object.
-            SpawnCodeNumber(wallPos.Value, wallNormal, generatedDigits[chosenGridPositions.Count - 1], chosenGridPositions.Count - 1);
+            int digitIndex = chosenGridPositions.Count - 1;
+
+            // Capture levelIndex for the closure so the right level's state is updated.
+            int capturedLevel = levelIndex;
+            SpawnCodeNumber(wallPos.Value, wallNormal, data.digits[digitIndex], digitIndex, capturedLevel);
 
             if (chosenWorldPositions.Count >= 4) break;
         }
@@ -132,13 +146,12 @@ public class CodeNumberManager : MonoBehaviour
             Debug.LogWarning($"[CodeNumberManager] Could only place {chosenWorldPositions.Count}/4 numbers. Try reducing minSpreadDistance.");
         }
 
-        // Initialise HUD display (all slots empty).
         if (hud != null) hud.ResetDisplay();
     }
 
     // ── Spawning ─────────────────────────────────────────────────────────────
 
-    private void SpawnCodeNumber(Vector3 position, Vector3 wallNormal, int digit, int orderIndex)
+    private void SpawnCodeNumber(Vector3 position, Vector3 wallNormal, int digit, int orderIndex, int levelIndex)
     {
         if (codeNumberPrefab == null)
         {
@@ -146,19 +159,20 @@ public class CodeNumberManager : MonoBehaviour
             return;
         }
 
-        // Orient the number to face INTO the room (away from wall).
-        // Negate wallNormal: LookRotation points the object's +Z along the given direction,
-        // but the Quad prefab child already faces +Z, so we need the root to face AWAY from
-        // the wall (i.e. toward the player) — which means pointing -wallNormal outward.
         Quaternion rotation = Quaternion.LookRotation(-wallNormal, Vector3.up);
 
         GameObject obj = Instantiate(codeNumberPrefab, position, rotation);
-        obj.name = $"CodeNumber_{orderIndex}_{digit}";
+        obj.name = $"CodeNumber_L{levelIndex}_{orderIndex}_{digit}";
+
+        // Track the object under this level so we can clean it up independently.
+        if (levelStates.TryGetValue(levelIndex, out LevelData data))
+            data.numbers.Add(obj);
 
         CodeNumber codeNum = obj.GetComponent<CodeNumber>();
         if (codeNum != null)
         {
-            codeNum.Initialise(digit, orderIndex, OnDigitCollected);
+            // Closure captures levelIndex so the callback updates the correct level's state.
+            codeNum.Initialise(digit, orderIndex, (oi, d) => OnDigitCollected(levelIndex, oi, d));
         }
         else
         {
@@ -229,43 +243,78 @@ public class CodeNumberManager : MonoBehaviour
 
     /// <summary>
     /// Called by a CodeNumber when the player successfully gazes at it.
+    /// levelIndex tells us which level's state and keypad to update.
     /// </summary>
-    public void OnDigitCollected(int orderIndex, int digit)
+    public void OnDigitCollected(int levelIndex, int orderIndex, int digit)
     {
-        if (digitsCollected[orderIndex]) return; // Already collected (safety check).
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return;
+        if (data.collected[orderIndex]) return; // Already collected.
 
-        digitsCollected[orderIndex] = true;
-        collectedCount++;
+        data.collected[orderIndex] = true;
+        data.collectedCount++;
 
-        Debug.Log($"[CodeNumberManager] Digit {orderIndex + 1}/4 collected: {digit}");
+        Debug.Log($"[CodeNumberManager] Level {levelIndex} digit {orderIndex + 1}/4 collected: {digit}");
 
-        if (hud != null) hud.UpdateSlot(orderIndex, digit, collectedCount);
+        if (hud != null) hud.UpdateSlot(orderIndex, digit, data.collectedCount);
 
-        // Unlock the keypad once all 4 are found.
-        if (collectedCount >= 4)
+        if (data.collectedCount >= 4)
         {
-            if (currentKeypad != null) currentKeypad.SetCodesCollected(true);
+            if (data.keypad != null) data.keypad.SetCodesCollected(true);
             if (hud != null) hud.ShowAllCollectedMessage();
-            Debug.Log("[CodeNumberManager] All 4 digits collected. Keypad unlocked!");
+            Debug.Log($"[CodeNumberManager] Level {levelIndex}: all 4 digits collected. Keypad unlocked!");
         }
     }
 
     // ── Utility ───────────────────────────────────────────────────────────────
 
-    private void ClearPreviousNumbers()
+    // Called by GameManager.SetCurrentLevel() when the player descends to a new level.
+    // Resets the HUD to reflect the new level's collection state (empty on first visit,
+    // already-collected slots filled in if revisiting).
+    public void ActivateLevel(int levelIndex)
     {
-        // Destroy all existing CodeNumber objects from the previous level.
-        CodeNumber[] existing = FindObjectsOfType<CodeNumber>();
-        foreach (CodeNumber cn in existing)
-            Destroy(cn.gameObject);
+        if (hud == null) hud = FindObjectOfType<CodeNumberHUD>(true);
+        if (hud == null) return;
+
+        hud.ResetDisplay();
+
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return;
+
+        // Re-fill any slots the player already collected on this level (e.g. after respawn).
+        for (int i = 0; i < 4; i++)
+        {
+            if (data.collected[i])
+                hud.UpdateSlot(i, data.digits[i], data.collectedCount);
+        }
     }
 
-    private void ResetState()
+    // Destroys only the numbers belonging to one specific level.
+    private void ClearLevelNumbers(int levelIndex)
     {
-        digitsCollected = new bool[4];
-        collectedCount = 0;
-        generatedDigits = new int[4];
-        currentKeypad = null;
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return;
+
+        foreach (GameObject obj in data.numbers)
+        {
+            if (obj == null) continue;
+            if (Application.isPlaying) Destroy(obj);
+            else DestroyImmediate(obj);
+        }
+        data.numbers.Clear();
+        levelStates.Remove(levelIndex);
+    }
+
+    // Called by ProceduralDungeonGenerator.ClearDungeon() — wipes everything.
+    public void ClearAll()
+    {
+        foreach (var kvp in levelStates)
+        {
+            foreach (GameObject obj in kvp.Value.numbers)
+            {
+                if (obj == null) continue;
+                if (Application.isPlaying) Destroy(obj);
+                else DestroyImmediate(obj);
+            }
+        }
+        levelStates.Clear();
     }
 
     private void ShuffleList<T>(List<T> list)

@@ -23,10 +23,15 @@ public class NPCSpawnManager : MonoBehaviour
     public float minDistanceFromPlayer = 15f;
     public float minDistanceBetweenNPCs = 10f;
     public bool showSpawnZones = true;
+
+    [Tooltip("NPCs cannot spawn within this radius of any safe room or spawn room entrance tile.")]
+    public float safeRoomExclusionRadius = 8f;
     
     private List<GameObject> activeNPCs = new List<GameObject>();
     private List<GameObject> activeApples = new List<GameObject>();
     private Camera playerCamera;
+    private SafeRoomSetup safeRoomSetup;
+    private SpawnRoomSetup spawnRoomSetup;
 
     void OnDrawGizmos()
     {
@@ -48,9 +53,10 @@ public class NPCSpawnManager : MonoBehaviour
     {
         playerCamera = Camera.main;
         if (player == null)
-        {
             player = GameObject.FindGameObjectWithTag("Player")?.transform;
-        }
+
+        safeRoomSetup  = FindObjectOfType<SafeRoomSetup>();
+        spawnRoomSetup = FindObjectOfType<SpawnRoomSetup>();
 
         Debug.Log($"{name}: NPCSpawnManager started with {spawnZones.Count} spawn zones");
 
@@ -201,7 +207,33 @@ public class NPCSpawnManager : MonoBehaviour
     {
         return Vector3.Distance(position, player.position) >= minDistanceFromPlayer
             && !IsVisibleToPlayer(position)
-            && IsFarEnoughFromOtherNPCs(position);
+            && IsFarEnoughFromOtherNPCs(position)
+            && IsFarEnoughFromSafeRooms(position);
+    }
+
+    // Checks that the position is outside all safe room and spawn room exclusion zones.
+    // This prevents NPCs from appearing inside the rooms that are meant to be safe.
+    private bool IsFarEnoughFromSafeRooms(Vector3 position)
+    {
+        if (safeRoomSetup != null)
+        {
+            foreach (Vector3 center in safeRoomSetup.GetSafeRoomCenters())
+            {
+                if (Vector3.Distance(position, center) < safeRoomExclusionRadius)
+                    return false;
+            }
+        }
+
+        if (spawnRoomSetup != null)
+        {
+            foreach (Vector3 center in spawnRoomSetup.GetSpawnRoomPositions())
+            {
+                if (Vector3.Distance(position, center) < safeRoomExclusionRadius)
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     private bool IsVisibleToPlayer(Vector3 position)

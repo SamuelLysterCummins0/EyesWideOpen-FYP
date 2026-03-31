@@ -33,6 +33,7 @@ public class SafeRoomDoor : MonoBehaviour
     private Vector3 openLocalPos;
     private Coroutine slideCoroutine;
     private Transform player;
+    private Collider interactionHitbox;
 
     private void Start()
     {
@@ -51,16 +52,40 @@ public class SafeRoomDoor : MonoBehaviour
         // Cache player once — avoids FindGameObjectWithTag every frame
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
         if (playerObj != null) player = playerObj.transform;
+
+        // Add a dedicated trigger hitbox for gaze interaction without blocking movement.
+        EnsureInteractionHitbox();
+
+        // If a collider exists on the door root object, keep it as trigger so it never blocks passage.
+        Collider rootCollider = GetComponent<Collider>();
+        if (rootCollider != null)
+        {
+            rootCollider.isTrigger = true;
+        }
     }
 
-    private void Update()
+    private void EnsureInteractionHitbox()
     {
-        // Simple keyboard fallback — replace with your gaze/raycast system as needed
-        if (!Input.GetKeyDown(KeyCode.E)) return;
-        if (player == null) return;
+        Transform existing = transform.Find("DoorInteractHitbox");
+        if (existing != null)
+        {
+            interactionHitbox = existing.GetComponent<Collider>();
+            if (interactionHitbox != null)
+            {
+                interactionHitbox.isTrigger = true;
+            }
+            return;
+        }
 
-        if (Vector3.Distance(player.position, transform.position) <= interactDistance)
-            Interact();
+        GameObject hitboxObj = new GameObject("DoorInteractHitbox");
+        hitboxObj.transform.SetParent(transform, false);
+        hitboxObj.transform.localPosition = Vector3.zero;
+        hitboxObj.transform.localRotation = Quaternion.identity;
+
+        BoxCollider hitbox = hitboxObj.AddComponent<BoxCollider>();
+        hitbox.size = new Vector3(2f, 3f, 0.3f);
+        hitbox.isTrigger = true;
+        interactionHitbox = hitbox;
     }
 
     // Toggle the door open or closed.

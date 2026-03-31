@@ -13,10 +13,13 @@ public class GameManager : MonoBehaviour
     public SUPERCharacterAIO playerController;
     public SpawnRoomSetup spawnRoomSetup;
     public DungeonNavMeshSetup dungeonNavMeshSetup;
+    public CameraControl cameraControl;
 
     [Header("State")]
     private int currentLevel = 0;
     private bool isDeathScreenShowing = false;
+    private bool isPlayerDead = false;
+    private Coroutine deathCoroutine;
 
     void Start()
     {
@@ -43,10 +46,14 @@ public class GameManager : MonoBehaviour
             dungeonNavMeshSetup = FindObjectOfType<DungeonNavMeshSetup>();
     }
 
-    // Call this whenever the player descends or ascends to a new level
+    // Call this whenever the player descends or ascends to a new level.
+    // Also resets the code number HUD so the new level's digits display correctly.
     public void SetCurrentLevel(int level)
     {
         currentLevel = level;
+
+        if (CodeNumberManager.Instance != null)
+            CodeNumberManager.Instance.ActivateLevel(level);
     }
 
     public int GetCurrentLevel() => currentLevel;
@@ -70,17 +77,21 @@ public class GameManager : MonoBehaviour
 
     public void PlayerDied()
     {
+        if (isPlayerDead) return;
+        isPlayerDead = true;
+
         // Disable controller immediately so the player doesn't drift during the jumpscare
         if (playerController != null)
             playerController.enabled = false;
 
-        StartCoroutine(HandlePlayerDeath());
+        deathCoroutine = StartCoroutine(HandlePlayerDeath());
     }
 
     private System.Collections.IEnumerator HandlePlayerDeath()
     {
-        // Wait for jumpscare animation to finish
-        yield return new WaitForSeconds(5f);
+        // Wait for jumpscare animation to finish — driven by CameraControl.jumpscareHoldTime
+        float waitTime = (cameraControl != null) ? cameraControl.jumpscareHoldTime : 3f;
+        yield return new WaitForSeconds(waitTime);
 
         // Show death screen
         deathScreen.SetActive(true);
@@ -97,29 +108,54 @@ public class GameManager : MonoBehaviour
 
     public void Respawn()
     {
-        // Hide death screen, restore time and cursor
-        deathScreen.SetActive(false);
+        // Stop the death coroutine in case it's still pending
+        if (deathCoroutine != null)
+        {
+            StopCoroutine(deathCoroutine);
+            deathCoroutine = null;
+        }
+
+        // Stop any lingering camera coroutine (ReturnCameraToOriginal gets stuck
+        // when timeScale=0 and would otherwise resume mid-respawn)
+        if (cameraControl != null)
+            cameraControl.ResetCameraState();
+
         isDeathScreenShowing = false;
-        Cursor.visible = false;
-        Cursor.lockState = CursorLockMode.Locked;
+        isPlayerDead = false;
         Time.timeScale = 1f;
 
-        // Teleport player to this level's spawn room
+        // Do all world-state changes while the death screen still covers the view,
+        // so the player never sees themselves warp across the map.
         Vector3 spawnPoint = Vector3.zero;
         if (spawnRoomSetup != null && spawnRoomSetup.HasSpawnPoint(currentLevel))
             spawnPoint = spawnRoomSetup.GetSpawnPoint(currentLevel);
         else
             Debug.LogWarning($"GameManager: No spawn point for level {currentLevel}, respawning at origin.");
 
-        TeleportPlayer(spawnPoint);
+        try
+        {
+            TeleportPlayer(spawnPoint);
 
-        // Re-randomise NPC positions for this level
-        if (dungeonNavMeshSetup != null)
-            dungeonNavMeshSetup.RespawnNPCsForLevel(currentLevel);
+            // Reset stamina to full
+            if (playerController != null)
+                playerController.currentStaminaLevel = playerController.Stamina;
 
-        // Reset audio feedback
-        if (HeartbeatManager.Instance != null)
-            HeartbeatManager.Instance.ResetHeartbeat();
+            // Reset heartbeat BEFORE NPC respawn so it can't be overridden by a
+            // dying NPC's final Update() or a freshly spawned NPC's first Update()
+            if (HeartbeatManager.Instance != null)
+                HeartbeatManager.Instance.ResetHeartbeat();
+
+            // Re-randomise NPC positions for this level
+            if (dungeonNavMeshSetup != null)
+                dungeonNavMeshSetup.RespawnNPCsForLevel(currentLevel);
+        }
+        finally
+        {
+            // Hide death screen — inside finally so it runs even if something above throws
+            deathScreen.SetActive(false);
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Locked;
+        }
     }
 
     // Safely teleports the player: zeros physics, moves, re-enables movement.

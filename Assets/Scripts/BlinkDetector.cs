@@ -7,7 +7,7 @@ using mptcc = Mediapipe.Tasks.Components.Containers;
 public class BlinkDetector : MonoBehaviour
 {
     [Header("Blink Detection Settings")]
-    [SerializeField] private float blinkThreshold = 0.21f;
+    [SerializeField] private float blinkThreshold = 0.35f;
     [SerializeField] private int minBlinkFrames = 2;
     [SerializeField] private float blinkCooldown = 0.15f;
 
@@ -33,6 +33,15 @@ public class BlinkDetector : MonoBehaviour
     private float currentRightEAR = 0f;
     private float currentAvgEAR = 0f;
 
+    // Calibration system for dynamic thresholds
+    [Header("Calibration")]
+    [SerializeField] private bool useCalibration = false;
+    
+    private float calibratedClosedBaseline = -1f; // EAR when eyes fully closed
+    private float calibratedOpenBaseline = -1f;   // EAR when eyes fully open
+    private float dynamicBlinkThreshold = 0.21f;
+    private bool isCalibrated = false;
+
     public bool IsBlinking => isBlinking;
     public int TotalBlinks => totalBlinks;
     public float CurrentEAR => currentAvgEAR;
@@ -44,7 +53,31 @@ public class BlinkDetector : MonoBehaviour
             blinkIndicator.color = normalColor;
         }
 
-        Debug.Log("Blink Detector initialized. Threshold: " + blinkThreshold);
+        // Load calibration if it exists
+        if (useCalibration)
+        {
+            LoadCalibration();
+        }
+
+        if (isCalibrated)
+        {
+            Debug.Log($"Calibration loaded. Closed EAR: {calibratedClosedBaseline:F3}, Open EAR: {calibratedOpenBaseline:F3}");
+            Debug.Log($"Dynamic Blink Threshold: {dynamicBlinkThreshold:F3}");
+        }
+        else
+        {
+            dynamicBlinkThreshold = blinkThreshold;
+            Debug.Log("Using default thresholds. Run calibration for better accuracy. Threshold: " + dynamicBlinkThreshold);
+        }
+    }
+
+    void Update()
+    {
+        // Press 'B' to start blink calibration (for quick testing)
+        if (Input.GetKeyDown(KeyCode.B))
+        {
+            StartCalibration();
+        }
     }
 
     public void ProcessLandmarks(List<mptcc.NormalizedLandmark> landmarks)
@@ -91,7 +124,8 @@ public class BlinkDetector : MonoBehaviour
 
     void DetectBlink()
     {
-        bool earBelowThreshold = currentAvgEAR < blinkThreshold;
+        float threshold = isCalibrated ? dynamicBlinkThreshold : blinkThreshold;
+        bool earBelowThreshold = currentLeftEAR < threshold && currentRightEAR < threshold;
         float timeSinceLastBlink = Time.time - lastBlinkTime;
 
         if (earBelowThreshold)
@@ -181,5 +215,113 @@ public class BlinkDetector : MonoBehaviour
     {
         blinkThreshold = threshold;
         Debug.Log($"Blink threshold updated to: {threshold:F3}");
+    }
+
+    // ===== CALIBRATION SYSTEM =====
+
+    public void StartCalibration()
+    {
+        Debug.Log("Starting Blink Calibration...");
+        StartCoroutine(CalibrationSequence());
+    }
+
+    private IEnumerator CalibrationSequence()
+    {
+        // Step 1: Fully open eyes
+        Debug.Log("CALIBRATION STEP 1: Open both eyes FULLY and keep them open for 2 seconds...");
+        yield return new WaitForSeconds(2f);
+
+        if (currentAvgEAR <= 0)
+        {
+            Debug.LogError("No valid EAR data during calibration step 1. Aborting.");
+            yield break;
+        }
+
+        calibratedOpenBaseline = currentAvgEAR;
+        Debug.Log($"Open baseline captured: {calibratedOpenBaseline:F3}");
+
+        // Step 2: Fully close eyes
+        yield return new WaitForSeconds(1f);
+        Debug.Log("CALIBRATION STEP 2: Close both eyes FULLY and keep them closed for 2 seconds...");
+        yield return new WaitForSeconds(2f);
+
+        if (currentAvgEAR <= 0)
+        {
+            Debug.LogError("No valid EAR data during calibration step 2. Aborting.");
+            yield break;
+        }
+
+        calibratedClosedBaseline = currentAvgEAR;
+        Debug.Log($"Closed baseline captured: {calibratedClosedBaseline:F3}");
+
+        // Calculate dynamic thresholds
+        CalculateDynamicThresholds();
+
+        // Save to PlayerPrefs
+        SaveCalibration();
+
+        Debug.Log("CALIBRATION COMPLETE!");
+        Debug.Log($"Dynamic Blink Threshold: {dynamicBlinkThreshold:F3}");
+    }
+
+    private void CalculateDynamicThresholds()
+    {
+        if (calibratedClosedBaseline < 0 || calibratedOpenBaseline < 0)
+        {
+            Debug.LogError("Calibration baselines not set!");
+            return;
+        }
+
+        // Blink threshold = midpoint between closed and open
+        dynamicBlinkThreshold = (calibratedClosedBaseline + calibratedOpenBaseline) / 2f;
+
+        isCalibrated = true;
+    }
+
+    private void SaveCalibration()
+    {
+        PlayerPrefs.SetFloat("BlinkDetector_ClosedBaseline", calibratedClosedBaseline);
+        PlayerPrefs.SetFloat("BlinkDetector_OpenBaseline", calibratedOpenBaseline);
+        PlayerPrefs.SetFloat("BlinkDetector_BlinkThreshold", dynamicBlinkThreshold);
+        PlayerPrefs.SetInt("BlinkDetector_IsCalibrated", 1);
+        PlayerPrefs.Save();
+
+        Debug.Log("Calibration saved to PlayerPrefs");
+    }
+
+    private void LoadCalibration()
+    {
+        if (!PlayerPrefs.HasKey("BlinkDetector_IsCalibrated"))
+        {
+            Debug.Log("No previous calibration found.");
+            isCalibrated = false;
+            return;
+        }
+
+        calibratedClosedBaseline = PlayerPrefs.GetFloat("BlinkDetector_ClosedBaseline");
+        calibratedOpenBaseline = PlayerPrefs.GetFloat("BlinkDetector_OpenBaseline");
+        dynamicBlinkThreshold = PlayerPrefs.GetFloat("BlinkDetector_BlinkThreshold");
+        isCalibrated = PlayerPrefs.GetInt("BlinkDetector_IsCalibrated") == 1;
+
+        if (isCalibrated)
+        {
+            Debug.Log("Calibration loaded successfully!");
+        }
+    }
+
+    public void ResetCalibration()
+    {
+        PlayerPrefs.DeleteKey("BlinkDetector_ClosedBaseline");
+        PlayerPrefs.DeleteKey("BlinkDetector_OpenBaseline");
+        PlayerPrefs.DeleteKey("BlinkDetector_BlinkThreshold");
+        PlayerPrefs.DeleteKey("BlinkDetector_IsCalibrated");
+        PlayerPrefs.Save();
+
+        calibratedClosedBaseline = -1f;
+        calibratedOpenBaseline = -1f;
+        dynamicBlinkThreshold = blinkThreshold;
+        isCalibrated = false;
+
+        Debug.Log("Calibration reset. Using default thresholds.");
     }
 }

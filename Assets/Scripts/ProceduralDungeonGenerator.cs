@@ -1,10 +1,8 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using UnityEngine;
 //
-public class ProceduralDungeonGenerator : MonoBehaviour
+public partial class ProceduralDungeonGenerator : MonoBehaviour
 {
     public enum EdgeType { Wall, Center, Left, Right, Open }
 
@@ -37,6 +35,14 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             if (west != EdgeType.Wall) count++;
             return count;
         }
+
+        public bool HasLeftOrRightEdge()
+        {
+            return north == EdgeType.Left || north == EdgeType.Right ||
+                   south == EdgeType.Left || south == EdgeType.Right ||
+                   east == EdgeType.Left || east == EdgeType.Right ||
+                   west == EdgeType.Left || west == EdgeType.Right;
+        }
     }
 
     [Header("Tile Prefabs")]
@@ -64,6 +70,8 @@ public class ProceduralDungeonGenerator : MonoBehaviour
 
     [Header("Debug")]
     public bool showDebugGizmos = true;
+    [Tooltip("Print a grid map + isolation report to the Console after each level generates.")]
+    public bool debugPrintLayout = false;
     public bool generateOnStart = false;
 
     [Header("Multi-Level Settings")]
@@ -86,6 +94,12 @@ public class ProceduralDungeonGenerator : MonoBehaviour
     private List<Vector2Int> stairsPositions = new List<Vector2Int>(); // Track where stairs were placed
     private Dictionary<int, TileConfig[,]> allLevelConfigs = new Dictionary<int, TileConfig[,]>();
 
+    void SafeDestroy(Object obj)
+    {
+        if (obj == null) return;
+        if (Application.isPlaying) Destroy(obj); else DestroyImmediate(obj);
+    }
+
     void Start()
     {
         InitializeTileConfigs();
@@ -95,226 +109,8 @@ public class ProceduralDungeonGenerator : MonoBehaviour
     void InitializeTileConfigs()
     {
         tileConfigs = new Dictionary<string, TileConfig>();
-        EdgeType W = EdgeType.Wall, C = EdgeType.Center, L = EdgeType.Left, R = EdgeType.Right, O = EdgeType.Open;
-
-        // ══════════════════════════════════════════
-        // CORRIDOR TILES (__ double underscore = + in docs)
-        // Parameter order: Front, Right, Back, Left
-        // ══════════════════════════════════════════
-
-        // __Corner_01 series - center openings
-        AddConfig("Tiles__Corner_01_A", C, W, W, C);  // F + L
-        AddConfig("Tiles__Corner_01_B", C, C, W, W);  // F + R
-        AddConfig("Tiles__Corner_01_C", W, W, C, C);  // L + B
-        AddConfig("Tiles__Corner_01_D", W, C, C, W);  // R + B
-
-        // __Corner_02 series - mixed center and open
-        AddConfig("Tiles__Corner_02_A", C, O, O, C);  // F + L and R + B NO WALLS
-        AddConfig("Tiles__Corner_02_B", C, C, O, O);  // F + R and L + B NO WALLS
-        AddConfig("Tiles__Corner_02_C", O, O, C, C);  // L + B and R + F NO WALLS
-        AddConfig("Tiles__Corner_02_D", O, C, C, O);  // R + B and L + F NO WALLS
-
-        // __Cross
-        AddConfig("Tiles__Cross", C, C, C, C);  // F + B + L + R
-
-        // __Halls
-        AddConfig("Tiles__Halls_01_A", C, W, C, W);  // F + B
-        AddConfig("Tiles__Halls_01_B", W, C, W, C);  // L + R
-
-        // __RoomEnd
-        AddConfig("Tiles__RoomEnd_01_A", C, W, W, W);  // F
-        AddConfig("Tiles__RoomEnd_01_B", W, W, W, C);  // L
-        AddConfig("Tiles__RoomEnd_01_C", W, C, W, W);  // R
-        AddConfig("Tiles__RoomEnd_01_D", W, W, C, W);  // B
-
-        // __Room_Hole (same as RoomEnd)
-        AddConfig("Tiles__Room_Hole_01_A", C, W, W, W);
-        AddConfig("Tiles__Room_Hole_01_B", W, W, W, C);
-        AddConfig("Tiles__Room_Hole_01_C", W, C, W, W);
-        AddConfig("Tiles__Room_Hole_01_D", W, W, C, W);
-
-        // __Room_HoleCeiling
-        AddConfig("Tiles__Room_HoleCeiling_01_A", C, W, W, W);
-        AddConfig("Tiles__Room_HoleCeiling_01_B", W, W, W, C);
-        AddConfig("Tiles__Room_HoleCeiling_01_C", W, C, W, W);
-        AddConfig("Tiles__Room_HoleCeiling_01_D", W, W, C, W);
-
-        // __Room_HoleFloorCeiling
-        AddConfig("Tiles__Room_HoleFloorCeiling_01_A", C, W, W, W);
-        AddConfig("Tiles__Room_HoleFloorCeiling_01_B", W, W, W, C);
-        AddConfig("Tiles__Room_HoleFloorCeiling_01_C", W, C, W, W);
-        AddConfig("Tiles__Room_HoleFloorCeiling_01_D", W, W, C, W);
-
-        // __Room_HoleFloor
-        AddConfig("Tiles__Room_HoleFloor_01_A", C, W, W, W);
-        AddConfig("Tiles__Room_HoleFloor_01_B", W, W, W, C);
-        AddConfig("Tiles__Room_HoleFloor_01_C", W, C, W, W);
-        AddConfig("Tiles__Room_HoleFloor_01_D", W, W, C, W);
-
-        // __RoomStairs
-        AddConfig("Tiles__RoomStairs_01_A", C, W, W, W);
-        AddConfig("Tiles__RoomStairs_01_B", W, W, W, C);
-        AddConfig("Tiles__RoomStairs_01_C", W, C, W, W);
-        AddConfig("Tiles__RoomStairs_01_D", W, W, C, W);
-
-        // __Side_01 - T-junctions
-        AddConfig("Tiles__Side_01_A", C, C, W, C);  // F + L + R
-        AddConfig("Tiles__Side_01_B", C, W, C, C);  // F + L + B
-        AddConfig("Tiles__Side_01_C", C, C, C, W);  // F + R + B
-        AddConfig("Tiles__Side_01_D", W, C, C, C);  // L + R + B
-
-        // __Side_02 - Mixed
-        AddConfig("Tiles__Side_02_A", C, C, O, C);  // F + L + R and B NO WALLS
-        AddConfig("Tiles__Side_02_B", C, O, C, C);  // F + L + B and R NO WALLS
-        AddConfig("Tiles__Side_02_C", C, C, C, O);  // F + R + B and L NO WALLS
-        AddConfig("Tiles__Side_02_D", O, C, C, C);  // L + R + B and F NO WALLS
-
-        // ══════════════════════════════════════════
-        // ROOM TILES (BasicCorner/BasicSide)
-        // ══════════════════════════════════════════
-
-        // BasicCorner_01 - 2 adjacent open edges
-        AddConfig("Tiles_BasicCorner_01_A", O, W, W, O);  // F + L NO WALLS
-        AddConfig("Tiles_BasicCorner_01_B", O, O, W, W);  // F + R NO WALLS
-        AddConfig("Tiles_BasicCorner_01_C", W, W, O, O);  // L + B NO WALLS
-        AddConfig("Tiles_BasicCorner_01_D", W, O, O, W);  // R + B NO WALLS
-
-        // BasicCorner_02 - 1 center + 2 open
-        AddConfig("Tiles_BasicCorner_02_A", O, W, C, O);  // B and F + L NO WALLS
-        AddConfig("Tiles_BasicCorner_02_B", O, O, C, W);  // B and F + R NO WALLS
-        AddConfig("Tiles_BasicCorner_02_C", C, W, O, O);  // F and L + B NO WALLS
-        AddConfig("Tiles_BasicCorner_02_D", C, O, O, W);  // F and R + B NO WALLS
-
-        // BasicCorner_03 - 1 center + 2 open
-        AddConfig("Tiles_BasicCorner_03_A", O, C, W, O);  // R and F + L NO WALLS
-        AddConfig("Tiles_BasicCorner_03_B", O, O, W, C);  // L and F + R NO WALLS
-        AddConfig("Tiles_BasicCorner_03_C", W, C, O, O);  // R and L + B NO WALLS
-        AddConfig("Tiles_BasicCorner_03_D", W, O, O, C);  // L and R + B NO WALLS
-
-        // BasicCorner_04 - 1 left/right + 2 open
-        AddConfig("Tiles_BasicCorner_04_A", O, W, L, O);  // B right → B left (flipped for back)
-        AddConfig("Tiles_BasicCorner_04_B", O, O, R, W);  // B left → B right (flipped for back)
-        AddConfig("Tiles_BasicCorner_04_C", R, W, O, O);  // F right and L + B NO WALLS
-        AddConfig("Tiles_BasicCorner_04_D", L, O, O, W);  // F left and R + B NO WALLS
-
-        // BasicCorner_05 - 1 left/right + 2 open
-        AddConfig("Tiles_BasicCorner_05_A", O, R, W, O);  // R right and L + F NO WALLS
-        AddConfig("Tiles_BasicCorner_05_B", O, O, W, L);  // L left and F + R NO WALLS
-        AddConfig("Tiles_BasicCorner_05_C", W, L, O, O);  // R left and L + B NO WALLS
-        AddConfig("Tiles_BasicCorner_05_D", W, O, O, R);  // L right and R + B NO WALLS
-
-        // BasicCorner_06 - TRANSITION tiles (2 center + 2 open)
-        AddConfig("Tiles_BasicCorner_06_A", O, C, C, O);  // R + B and L + F NO WALLS
-        AddConfig("Tiles_BasicCorner_06_B", O, O, C, C);  // L + B and F + R NO WALLS
-        AddConfig("Tiles_BasicCorner_06_C", C, C, O, O);  // F + R and L + B NO WALLS
-        AddConfig("Tiles_BasicCorner_06_D", C, O, O, C);  // Assuming pattern
-
-        // BasicSide_01 - 3 open edges
-        AddConfig("Tiles_BasicSide_01_A", O, O, W, O);  // L + F + R NO WALLS
-        AddConfig("Tiles_BasicSide_01_B", O, W, O, O);  // L + F + B NO WALLS
-        AddConfig("Tiles_BasicSide_01_C", O, O, O, W);  // F + B + R NO WALLS
-        AddConfig("Tiles_BasicSide_01_D", W, O, O, O);  // L + B + R NO WALLS
-
-        // BasicSide_02 - 1 center + 3 open
-        AddConfig("Tiles_BasicSide_02_A", O, O, C, O);  // B and L + F + R NO WALLS
-        AddConfig("Tiles_BasicSide_02_B", O, C, O, O);  // R and L + F + B NO WALLS
-        AddConfig("Tiles_BasicSide_02_C", O, O, O, C);  // L and B + F + R NO WALLS
-        AddConfig("Tiles_BasicSide_02_D", C, O, O, O);  // F and L + B + R NO WALLS
-
-        // ══════════════════════════════════════════
-        // T SERIES (left/right offset openings)
-        // ══════════════════════════════════════════
-
-        // T__ - 4-way with offsets
-        AddConfig("Tiles_T__01_A", L, C, R, C);  // F left + L + R + B left (flipped to B right)
-        AddConfig("Tiles_T__01_B", R, C, L, C);  // F right + L + R + B right (flipped to B left)
-        AddConfig("Tiles_T__02_A", C, R, C, L);  // F + L left + R right + B
-        AddConfig("Tiles_T__02_B", C, L, C, R);  // F + L right + R left + B
-        AddConfig("Tiles_T__03_A", L, C, R, C);  // Same as 01_A (flipped)
-        AddConfig("Tiles_T__03_B", R, C, L, C);  // Same as 01_B (flipped)
-        AddConfig("Tiles_T__04_A", C, R, C, L);  // Same as 02_A
-        AddConfig("Tiles_T__04_B", C, L, C, R);  // Same as 02_B
-
-        // T_Side - 2-way with offsets
-        AddConfig("Tiles_T_Side_01_A", L, W, W, C);  // F left + L
-        AddConfig("Tiles_T_Side_01_B", R, C, W, W);  // F right + R
-        AddConfig("Tiles_T_Side_01_C", W, W, R, C);  // B left (flipped to B right) + L
-        AddConfig("Tiles_T_Side_01_D", W, C, L, W);  // B right (flipped to B left) + R
-
-        AddConfig("Tiles_T_Side_02_A", W, W, C, L);  // L left + B
-        AddConfig("Tiles_T_Side_02_B", C, W, W, R);  // L right + F
-        AddConfig("Tiles_T_Side_02_C", W, R, C, W);  // R right + B
-        AddConfig("Tiles_T_Side_02_D", C, L, W, W);  // F + R left
-
-        AddConfig("Tiles_T_Side_03_A", L, W, O, C);  // F left + L + B NO WALLS
-        AddConfig("Tiles_T_Side_03_B", R, C, O, W);  // F right + R + B NO WALLS
-        AddConfig("Tiles_T_Side_03_C", O, W, R, C);  // B left (flipped to B right) + L + F NO WALLS
-        AddConfig("Tiles_T_Side_03_D", O, C, L, W);  // B right (flipped to B left) + R + F NO WALLS
-
-        AddConfig("Tiles_T_Side_04_A", O, O, W, L);  // L left and F + R NO WALLS
-        AddConfig("Tiles_T_Side_04_B", W, O, O, R);  // L right and R + B NO WALLS
-        AddConfig("Tiles_T_Side_04_C", O, O, W, L);  // Same as A
-        AddConfig("Tiles_T_Side_04_D", W, L, O, O);  // R left and L + B NO WALLS
-
-        // TCorner_01 series - single left/right openings on one edge
-        AddConfig("Tiles_TCorner_01_A", L, W, W, W);  // F left
-        AddConfig("Tiles_TCorner_01_B", R, W, W, W);  // F right
-        AddConfig("Tiles_TCorner_01_C", W, W, R, W);  // B left (flipped to B right)
-        AddConfig("Tiles_TCorner_01_D", W, W, L, W);  // B right (flipped to B left)
-
-        // TCorner_02 series - single left/right openings on side edges
-        AddConfig("Tiles_TCorner_02_A", W, W, W, L);  // L left
-        AddConfig("Tiles_TCorner_02_B", W, W, W, R);  // L right
-        AddConfig("Tiles_TCorner_02_C", W, R, W, W);  // R right
-        AddConfig("Tiles_TCorner_02_D", W, L, W, W);  // R left
-
-        // TCorner_03 series - one left/right opening + 2 open edges
-        AddConfig("Tiles_TCorner_03_A", L, O, O, W);  // F left and R + B NO WALLS
-        AddConfig("Tiles_TCorner_03_B", R, W, O, O);  // F right and L + B NO WALLS
-        AddConfig("Tiles_TCorner_03_C", O, O, R, W);  // B left (flipped to B right) and F + R NO WALLS
-        AddConfig("Tiles_TCorner_03_D", O, W, L, O);  // B right (flipped to B left) and L + F NO WALLS
-
-        // TCorner_04 series - one left/right opening + 2 open edges (sides)
-        AddConfig("Tiles_TCorner_04_A", O, O, W, L);  // L left and F + R NO WALLS
-        AddConfig("Tiles_TCorner_04_B", W, O, O, R);  // L right and R + B NO WALLS
-        AddConfig("Tiles_TCorner_04_C", O, R, W, O);  // R right and F + L NO WALLS
-        AddConfig("Tiles_TCorner_04_D", W, L, O, O);  // R left and L + B NO WALLS
-
-        // TCornerSide series - mixed left/right with center
-        AddConfig("Tiles_TCornerSide_01_A", L, W, R, C);  // F left + L + B left (flipped to B right)
-        AddConfig("Tiles_TCornerSide_01_B", R, C, L, W);  // F right + R + B right (flipped to B left)
-        AddConfig("Tiles_TCornerSide_02_A", W, R, C, L);  // L left + R right + B
-        AddConfig("Tiles_TCornerSide_02_B", C, L, W, R);  // F + L right + R left
-        AddConfig("Tiles_TCornerSide_03_A", L, O, R, C);  // F left + L + B left (flipped to B right) and R NO WALLS
-        AddConfig("Tiles_TCornerSide_03_B", R, C, L, O);  // F right + R + B right (flipped to B left) and L NO WALLS
-        AddConfig("Tiles_TCornerSide_04_A", O, R, C, L);  // L left + R right + B and F NO WALLS
-        AddConfig("Tiles_TCornerSide_04_B", C, L, O, R);  // L right + R Left + F and B NO WALLS
-
-        // THalls series - open corridors
-        AddConfig("Tiles_THalls_01_A", R, W, L, W);  // HALL on right side and F + B NO WALLS
-        AddConfig("Tiles_THalls_01_B", L, W, R, W);  // HALL on left side and F + B NO WALLS
-        AddConfig("Tiles_THalls_01_C", W, R, W, L);  // HALL on back side and R + L NO WALLS
-        AddConfig("Tiles_THalls_01_D", W, L, W, R);  // HALL on front side and R + L NO WALLS
-
-        // TStairs series - single left/right openings
-        AddConfig("Tiles_TStairs_01_A", R, W, W, W);  // F right
-        AddConfig("Tiles_TStairs_01_B", W, W, W, R);  // L right
-        AddConfig("Tiles_TStairs_01_C", W, R, W, W);  // R right
-        AddConfig("Tiles_TStairs_01_D", W, W, L, W);  // B left
-
-        AddConfig("Tiles_TStairs_02_A", L, W, W, W);  // F left
-        AddConfig("Tiles_TStairs_02_B", W, W, W, L);  // L left
-        AddConfig("Tiles_TStairs_02_C", W, L, W, W);  // R left
-        AddConfig("Tiles_TStairs_02_D", W, W, L, W);  // B right (flipped to B left)
-
-        // Fill tile - all walls
-        AddConfig("Tiles_01_Fill", W, W, W, W);
-
+        TileConfigData.Populate(tileConfigs);
         Debug.Log($"Initialized {tileConfigs.Count} tile configurations");
-    }
-    void AddConfig(string name, EdgeType north, EdgeType east, EdgeType south, EdgeType west)
-    {
-        tileConfigs[name] = new TileConfig { tileName = name, north = north, east = east, south = south, west = west };
     }
 
     [ContextMenu("Generate Dungeon")]
@@ -410,19 +206,25 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
         int tilesPlaced = 0;
 
+        // pathDir is lifted out so connStart can use it after the forced-tiles block.
+        Vector2Int pathDir = Vector2Int.zero;
+
         // If starting from stairs landing, force a path inward from the edge
         if (levelIndex > 0 && stairsPositions.Count >= levelIndex)
         {
             // Determine which edge stairs are on and create path inward
-            Vector2Int pathDir = Vector2Int.zero;
             if (startX == 0) pathDir = new Vector2Int(1, 0); // West edge - go East
             else if (startX == dungeonWidth - 1) pathDir = new Vector2Int(-1, 0); // East edge - go West
             else if (startZ == 0) pathDir = new Vector2Int(0, 1); // South edge - go North
             else if (startZ == dungeonHeight - 1) pathDir = new Vector2Int(0, -1); // North edge - go South
 
             // Force-place 3 tiles leading inward from stairs.
-            // i=0 is the entrance tile (safe room) — it must use a room tile with only
-            // Open/Wall edges so the safe room door prefab (centre opening) aligns correctly.
+            // i=0 (perimeter/stairs position): room tile whose INWARD edge (pathDir direction)
+            //     is Open — this clears the wall at the bottom of the stairway exit.
+            // i=1 (safe room entrance): requires Open toward stairs (so the player can walk in)
+            //     AND forward Open toward dungeon (so BFS connects through, not into a pocket).
+            // i=2 (first dungeon tile past safe room): TryPlaceCompatibleTile ensures its
+            //     face toward i=1 matches, so opening a door doesn't reveal a wall.
             for (int i = 0; i < 3; i++)
             {
                 int px = startX + (pathDir.x * i);
@@ -431,13 +233,26 @@ public class ProceduralDungeonGenerator : MonoBehaviour
                 if (IsInBounds(px, pz))
                 {
                     if (i == 0)
-                        PlaceEntranceTile(px, pz, levelParent);
+                    {
+                        // The stairway prefab placed by the level above already occupies
+                        // this grid slot and acts as the floor tile here. Placing another
+                        // tile on top would make the BFS use the generated tile's edge data
+                        // instead of the stairway's, causing adjacent perimeter tiles to
+                        // connect incorrectly and appear isolated.
+                        // Mark visited so the BFS never fills this slot — no tile, no frontier.
+                        visited.Add(new Vector2Int(px, pz));
+                    }
                     else
-                        PlaceRandomRoomTile(px, pz, levelParent);
+                    {
+                        if (i == 1)
+                            PlaceStaircaseEntranceTile(px, pz, pathDir, levelParent);
+                        else
+                            TryPlaceCompatibleTile(px, pz, levelParent);
 
-                    visited.Add(new Vector2Int(px, pz));
-                    frontier.Enqueue(new Vector2Int(px, pz));
-                    tilesPlaced++;
+                        visited.Add(new Vector2Int(px, pz));
+                        frontier.Enqueue(new Vector2Int(px, pz));
+                        tilesPlaced++;
+                    }
                 }
             }
 
@@ -482,9 +297,22 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             }
         }
 
+        // For level 0 the BFS starts from the grid centre — a well-connected hub.
+        // For level 1+ startX/Z is the perimeter landing position (P0). Starting flood
+        // fills from the perimeter gives a single-entry view that can under-count reachable
+        // tiles, letting isolated pockets slip through repair undetected and causing code
+        // numbers / safe-room doors to appear in disconnected rooms.
+        // Use i=1 (one step inward, the guaranteed safe-room entrance tile) as the
+        // connectivity anchor — it's interior, force-placed, and connected to both the
+        // stairway and the rest of the dungeon.
+        int connStartX = (levelIndex > 0 && pathDir != Vector2Int.zero)
+            ? startX + pathDir.x : startX;
+        int connStartZ = (levelIndex > 0 && pathDir != Vector2Int.zero)
+            ? startZ + pathDir.y : startZ;
+
         // Run connectivity validation and repair with multiple passes
-        Debug.Log($"Level {levelIndex}: Running connectivity validation...");
-        List<Vector2Int> isolated = FindIsolatedTiles(startX, startZ);
+        Debug.Log($"Level {levelIndex}: Running connectivity validation (connStart:{connStartX},{connStartZ})...");
+        List<Vector2Int> isolated = FindIsolatedTiles(connStartX, connStartZ);
 
         int repairPass = 0;
         int maxRepairPasses = 7; // Try up to 7 repair attempts for stubborn isolated areas
@@ -498,7 +326,7 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             int repaired = 0;
             foreach (Vector2Int isoPos in isolated)
             {
-                if (TryRepairIsolatedTile(isoPos.x, isoPos.y, startX, startZ, levelParent))
+                if (TryRepairIsolatedTile(isoPos.x, isoPos.y, connStartX, connStartZ, levelParent))
                 {
                     repaired++;
                 }
@@ -507,7 +335,7 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             Debug.Log($"Level {levelIndex}: Pass {repairPass} repaired {repaired}/{isolated.Count} tiles");
 
             // Re-check connectivity after this pass
-            isolated = FindIsolatedTiles(startX, startZ);
+            isolated = FindIsolatedTiles(connStartX, connStartZ);
 
             if (isolated.Count == 0)
             {
@@ -527,7 +355,7 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         }
 
         // Run comprehensive validation
-        if (!ValidateFullConnectivity(startX, startZ, levelParent, levelIndex))
+        if (!ValidateFullConnectivity(connStartX, connStartZ, levelParent, levelIndex))
         {
             if (attemptNumber < 3)
             {
@@ -559,7 +387,7 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         }
 
         AddDecorations(levelParent);
-        PlaceStairsOnEdge(levelParent, levelIndex);
+        PlaceStairsOnEdge(levelParent, levelIndex, connStartX, connStartZ);
 
         // Set up safe room doors on the entrance tile (one step inward from the stairs)
         SafeRoomSetup safeRoom = FindObjectOfType<SafeRoomSetup>();
@@ -576,7 +404,14 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         // Notify CodeNumberManager so it can spawn collectible code numbers for this level
         CodeNumberManager codeManager = FindObjectOfType<CodeNumberManager>();
         if (codeManager != null)
-            codeManager.InitializeForLevel(this, levelIndex, startX, startZ);
+            codeManager.InitializeForLevel(this, levelIndex, connStartX, connStartZ);
+
+        // Spawn one computer terminal on a reachable floor tile for this level
+        ComputerSpawner computerSpawner = FindObjectOfType<ComputerSpawner>();
+        if (computerSpawner != null)
+            computerSpawner.InitializeForLevel(this, levelIndex, connStartX, connStartZ);
+
+        PrintLevelDebug(levelIndex, connStartX, connStartZ);
 
         // Save this level's configs for gizmos
         TileConfig[,] levelConfigsCopy = new TileConfig[dungeonWidth, dungeonHeight];
@@ -647,13 +482,17 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         }
     }
 
-    // Variant of PlaceRandomRoomTile used specifically for the entrance tile (i=0 in the
-    // forced path inward from stairs). Restricts to tiles whose edges are only Open or Wall —
-    // no Left/Right/Center — so the safe room door prefab (which has a centre opening) always
-    // aligns correctly. Falls back to a basic cross/hallway tile rather than TryPlaceCompatibleTile
-    // to avoid any Left/Right tile slipping through the compatibility fallback.
-    void PlaceEntranceTile(int x, int z, GameObject parent)
+    // i=1 in the forced staircase path — this is the actual safe room entrance tile.
+    // Two constraints beyond normal room tile:
+    //   1. Edge facing BACK toward the stairs (opposite of pathDir) must be Open — player
+    //      walks off the stairs straight into the safe room without hitting a wall.
+    //   2. At least one OTHER edge must be Open — SafeRoomSetup needs somewhere to put doors.
+    // Falls back progressively, relaxing constraint 2 then 1, before using TryPlaceCompatibleTile.
+    void PlaceStaircaseEntranceTile(int x, int z, Vector2Int pathDir, GameObject parent)
     {
+        // The "back" direction (toward stairs) is opposite to pathDir.
+        // e.g. pathDir = (1,0) → moving east → back = west.
+
         List<GameObject> candidates = new List<GameObject>();
         foreach (GameObject prefab in allTilePrefabs)
         {
@@ -661,14 +500,23 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             if (prefab.name.Contains("Stairs")) continue;
             TileConfig cfg = tileConfigs[prefab.name];
 
-            // Must be a pure room tile: only Open or Wall on every edge
             if (!cfg.IsRoomTile()) continue;
 
-            // Perimeter constraints
-            if (x == 0 && cfg.west != EdgeType.Wall) continue;
-            if (x == dungeonWidth - 1 && cfg.east != EdgeType.Wall) continue;
-            if (z == 0 && cfg.south != EdgeType.Wall) continue;
-            if (z == dungeonHeight - 1 && cfg.north != EdgeType.Wall) continue;
+            // Back edge (toward stairs) must be Open
+            if (pathDir.x ==  1 && cfg.west  != EdgeType.Open) continue;
+            if (pathDir.x == -1 && cfg.east  != EdgeType.Open) continue;
+            if (pathDir.y ==  1 && cfg.south != EdgeType.Open) continue;
+            if (pathDir.y == -1 && cfg.north != EdgeType.Open) continue;
+
+            // The FORWARD edge (same direction as pathDir, toward i=2 / main dungeon)
+            // must also be Open. This guarantees a straight-through corridor
+            // i=0 → i=1 → i=2 so the BFS always connects the safe-room pocket to
+            // the rest of the dungeon. Without this, a corner tile (e.g. N+W only)
+            // can be chosen, sending the BFS into an isolated corner pocket.
+            if (pathDir.x ==  1 && cfg.east  != EdgeType.Open) continue;
+            if (pathDir.x == -1 && cfg.west  != EdgeType.Open) continue;
+            if (pathDir.y ==  1 && cfg.north != EdgeType.Open) continue;
+            if (pathDir.y == -1 && cfg.south != EdgeType.Open) continue;
 
             candidates.Add(prefab);
         }
@@ -679,18 +527,23 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             return;
         }
 
-        // Hard fallback: find the first available room tile with no perimeter conflict
-        // rather than calling TryPlaceCompatibleTile which could pick a Left/Right tile.
+        // Fallback 1: relax the forward-Open constraint, just keep back edge Open + IsRoomTile
         foreach (GameObject prefab in allTilePrefabs)
         {
             if (prefab == null || !tileConfigs.ContainsKey(prefab.name)) continue;
             if (prefab.name.Contains("Stairs")) continue;
-            if (tileConfigs[prefab.name].IsRoomTile())
-            {
-                PlaceTile(x, z, prefab, parent);
-                return;
-            }
+            TileConfig cfg = tileConfigs[prefab.name];
+            if (!cfg.IsRoomTile()) continue;
+            if (pathDir.x ==  1 && cfg.west  != EdgeType.Open) continue;
+            if (pathDir.x == -1 && cfg.east  != EdgeType.Open) continue;
+            if (pathDir.y ==  1 && cfg.south != EdgeType.Open) continue;
+            if (pathDir.y == -1 && cfg.north != EdgeType.Open) continue;
+            PlaceTile(x, z, prefab, parent);
+            return;
         }
+
+        // Fallback 2: any compatible tile — back-edge-open not guaranteed but at least edge-matched
+        TryPlaceCompatibleTile(x, z, parent);
     }
 
     bool TryPlaceCompatibleTile(int x, int z, GameObject parent)
@@ -756,7 +609,9 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         if (chosen != null)
         {
             PlaceTile(x, z, chosen, parent);
+#if UNITY_EDITOR
             Debug.Log($"Used relaxed matching at ({x},{z}) - {chosen.name}");
+#endif
             return true;
         }
 
@@ -789,7 +644,9 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             {
                 GameObject perimFallback = perimeterSafe[Random.Range(0, perimeterSafe.Count)];
                 PlaceTile(x, z, perimFallback, parent);
+#if UNITY_EDITOR
                 Debug.LogWarning($"Perimeter fallback at ({x},{z}) - {perimFallback.name}");
+#endif
                 return false; // Don't expand frontier from fallback placement
             }
         }
@@ -801,12 +658,31 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             if (fillTile != null)
             {
                 PlaceTile(x, z, fillTile, parent);
+#if UNITY_EDITOR
                 Debug.LogWarning($"Used fill tile at ({x},{z}) - marked as dead end");
+#endif
                 return false; // Return FALSE to prevent frontier expansion
             }
         }
 
         return false;
+    }
+
+    int CountSingleOpeningLRNeighbors(int x, int z)
+    {
+        int count = 0;
+        Vector2Int[] dirs = {
+            new Vector2Int(x - 1, z), new Vector2Int(x + 1, z),
+            new Vector2Int(x, z + 1), new Vector2Int(x, z - 1)
+        };
+        foreach (Vector2Int d in dirs)
+        {
+            if (!IsInBounds(d.x, d.y) || placedConfigs[d.x, d.y] == null) continue;
+            TileConfig neighbor = placedConfigs[d.x, d.y];
+            if (neighbor.HasLeftOrRightEdge() && neighbor.GetOpeningCount() == 1)
+                count++;
+        }
+        return count;
     }
 
     bool IsCompatibleWithNeighbors(int x, int z, TileConfig config, bool strict = true)
@@ -823,7 +699,9 @@ public class ProceduralDungeonGenerator : MonoBehaviour
                                 z == 0 || z == dungeonHeight - 1);
             if (isPerimeter)
             {
+#if UNITY_EDITOR
                 Debug.LogWarning($"Rejected Fill tile at ({x},{z}) - cannot place at perimeter (walk-off hazard)");
+#endif
                 return false;
             }
         }
@@ -874,7 +752,9 @@ public class ProceduralDungeonGenerator : MonoBehaviour
 
                 if (!hasAllNeighbors)
                 {
+#if UNITY_EDITOR
                     Debug.Log($"Rejected {config.tileName} at ({x},{z}) - {openingCount} openings near edge");
+#endif
                     return false;
                 }
             }
@@ -913,79 +793,32 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             // If 2+ neighbors are also 2-opening tiles, reject to prevent closed loop formation
             if (twoOpeningNeighbors >= 2)
             {
+#if UNITY_EDITOR
                 Debug.Log($"Rejected {config.tileName} at ({x},{z}) - would form closed loop with {twoOpeningNeighbors} 2-opening neighbors");
+#endif
                 return false;
             }
         }
 
         // Prevent Left/Right tiles from forming isolated chains
         // THalls + TCorner combinations can create 3-tile isolated groups
-        bool hasLeftOrRight = (config.north == EdgeType.Left || config.north == EdgeType.Right ||
-                               config.south == EdgeType.Left || config.south == EdgeType.Right ||
-                               config.east == EdgeType.Left || config.east == EdgeType.Right ||
-                               config.west == EdgeType.Left || config.west == EdgeType.Right);
-
-        if (hasLeftOrRight)
+        if (config.HasLeftOrRightEdge())
         {
-            int singleOpeningLRNeighbors = 0;
+            int singleOpeningLRNeighbors = CountSingleOpeningLRNeighbors(x, z);
 
-            // Check all 4 neighbors for single-opening Left/Right tiles
-            if (x > 0 && placedConfigs[x - 1, z] != null)
-            {
-                TileConfig neighbor = placedConfigs[x - 1, z];
-                bool neighborHasLR = (neighbor.north == EdgeType.Left || neighbor.north == EdgeType.Right ||
-                                      neighbor.south == EdgeType.Left || neighbor.south == EdgeType.Right ||
-                                      neighbor.east == EdgeType.Left || neighbor.east == EdgeType.Right ||
-                                      neighbor.west == EdgeType.Left || neighbor.west == EdgeType.Right);
-                if (neighborHasLR && neighbor.GetOpeningCount() == 1)
-                    singleOpeningLRNeighbors++;
-            }
-
-            if (x < dungeonWidth - 1 && placedConfigs[x + 1, z] != null)
-            {
-                TileConfig neighbor = placedConfigs[x + 1, z];
-                bool neighborHasLR = (neighbor.north == EdgeType.Left || neighbor.north == EdgeType.Right ||
-                                      neighbor.south == EdgeType.Left || neighbor.south == EdgeType.Right ||
-                                      neighbor.east == EdgeType.Left || neighbor.east == EdgeType.Right ||
-                                      neighbor.west == EdgeType.Left || neighbor.west == EdgeType.Right);
-                if (neighborHasLR && neighbor.GetOpeningCount() == 1)
-                    singleOpeningLRNeighbors++;
-            }
-
-            if (z < dungeonHeight - 1 && placedConfigs[x, z + 1] != null)
-            {
-                TileConfig neighbor = placedConfigs[x, z + 1];
-                bool neighborHasLR = (neighbor.north == EdgeType.Left || neighbor.north == EdgeType.Right ||
-                                      neighbor.south == EdgeType.Left || neighbor.south == EdgeType.Right ||
-                                      neighbor.east == EdgeType.Left || neighbor.east == EdgeType.Right ||
-                                      neighbor.west == EdgeType.Left || neighbor.west == EdgeType.Right);
-                if (neighborHasLR && neighbor.GetOpeningCount() == 1)
-                    singleOpeningLRNeighbors++;
-            }
-
-            if (z > 0 && placedConfigs[x, z - 1] != null)
-            {
-                TileConfig neighbor = placedConfigs[x, z - 1];
-                bool neighborHasLR = (neighbor.north == EdgeType.Left || neighbor.north == EdgeType.Right ||
-                                      neighbor.south == EdgeType.Left || neighbor.south == EdgeType.Right ||
-                                      neighbor.east == EdgeType.Left || neighbor.east == EdgeType.Right ||
-                                      neighbor.west == EdgeType.Left || neighbor.west == EdgeType.Right);
-                if (neighborHasLR && neighbor.GetOpeningCount() == 1)
-                    singleOpeningLRNeighbors++;
-            }
-
-            // Reject patterns that create isolated chains
             if (openingCount == 1 && singleOpeningLRNeighbors >= 1)
             {
-                // TCorner-style tile next to another TCorner-style tile
+#if UNITY_EDITOR
                 Debug.LogWarning($"Rejected {config.tileName} at ({x},{z}) - L/R tiles clustering (would form isolated chain)");
+#endif
                 return false;
             }
 
             if (openingCount == 2 && singleOpeningLRNeighbors >= 2)
             {
-                // THalls-style tile trapped between two TCorner-style tiles
+#if UNITY_EDITOR
                 Debug.LogWarning($"Rejected {config.tileName} at ({x},{z}) - would create L/R dead-end chain");
+#endif
                 return false;
             }
 
@@ -1001,11 +834,7 @@ public class ProceduralDungeonGenerator : MonoBehaviour
                 {
                     if (!IsInBounds(d.x, d.y) || placedConfigs[d.x, d.y] == null) continue;
                     TileConfig adj = placedConfigs[d.x, d.y];
-                    bool adjHasLR = (adj.north == EdgeType.Left || adj.north == EdgeType.Right ||
-                                     adj.south == EdgeType.Left || adj.south == EdgeType.Right ||
-                                     adj.east == EdgeType.Left || adj.east == EdgeType.Right ||
-                                     adj.west == EdgeType.Left || adj.west == EdgeType.Right);
-                    if (!adjHasLR || adj.GetOpeningCount() != 2) continue;
+                    if (!adj.HasLeftOrRightEdge() || adj.GetOpeningCount() != 2) continue;
 
                     // This neighbor is a 2-opening L/R tile (THalls-style)
                     // Check if its OTHER neighbors already include a single-opening L/R tile
@@ -1015,16 +844,14 @@ public class ProceduralDungeonGenerator : MonoBehaviour
                     };
                     foreach (Vector2Int ad in adjDirs)
                     {
-                        if (ad.x == x && ad.y == z) continue; // Skip ourselves
+                        if (ad.x == x && ad.y == z) continue;
                         if (!IsInBounds(ad.x, ad.y) || placedConfigs[ad.x, ad.y] == null) continue;
                         TileConfig farNeighbor = placedConfigs[ad.x, ad.y];
-                        bool farHasLR = (farNeighbor.north == EdgeType.Left || farNeighbor.north == EdgeType.Right ||
-                                         farNeighbor.south == EdgeType.Left || farNeighbor.south == EdgeType.Right ||
-                                         farNeighbor.east == EdgeType.Left || farNeighbor.east == EdgeType.Right ||
-                                         farNeighbor.west == EdgeType.Left || farNeighbor.west == EdgeType.Right);
-                        if (farHasLR && farNeighbor.GetOpeningCount() == 1)
+                        if (farNeighbor.HasLeftOrRightEdge() && farNeighbor.GetOpeningCount() == 1)
                         {
+#if UNITY_EDITOR
                             Debug.LogWarning($"Rejected {config.tileName} at ({x},{z}) - would seal L/R chain through ({d.x},{d.y})");
+#endif
                             return false;
                         }
                     }
@@ -1154,7 +981,7 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         Debug.Log($"Added {decorationObjects.Count} decorations");
     }
 
-    void PlaceStairsOnEdge(GameObject parent, int levelIndex)
+    void PlaceStairsOnEdge(GameObject parent, int levelIndex, int connStartX, int connStartZ)
     {
         // Find all stairs tiles
         List<GameObject> stairsPrefabs = new List<GameObject>();
@@ -1166,8 +993,41 @@ public class ProceduralDungeonGenerator : MonoBehaviour
 
         if (stairsPrefabs.Count == 0) return;
 
-        // Collect all valid (position, stairs_tile) pairs on perimeter
-        List<(int x, int z, GameObject prefab)> validPlacements = new List<(int, int, GameObject)>();
+        // Build reachable set from connStart so we only place stairs where the
+        // player can actually reach them, and where the one-step-inward tile is
+        // a proper room tile (no corridor Left/Right/Center edges that would
+        // create a "middle opening" gap in the safe-room walls).
+        HashSet<Vector2Int> reachable = new HashSet<Vector2Int>();
+        {
+            var q = new Queue<Vector2Int>();
+            var start = new Vector2Int(connStartX, connStartZ);
+            if (IsInBounds(connStartX, connStartZ) && placedTiles[connStartX, connStartZ] != null)
+            {
+                q.Enqueue(start);
+                reachable.Add(start);
+                while (q.Count > 0)
+                {
+                    var cur = q.Dequeue();
+                    Vector2Int[] ns = {
+                        new Vector2Int(cur.x-1, cur.y), new Vector2Int(cur.x+1, cur.y),
+                        new Vector2Int(cur.x, cur.y+1), new Vector2Int(cur.x, cur.y-1)
+                    };
+                    foreach (var n in ns)
+                    {
+                        if (!IsInBounds(n.x, n.y) || reachable.Contains(n)) continue;
+                        if (placedTiles[n.x, n.y] == null) continue;
+                        if (CanWalkBetween(cur.x, cur.y, n.x, n.y)) { reachable.Add(n); q.Enqueue(n); }
+                    }
+                }
+            }
+        }
+
+        // Collect all valid (position, stairs_tile) pairs on perimeter.
+        // Primary: inward tile must be reachable AND be a proper room tile.
+        // Fallback: inward tile must be reachable (any tile type), used only when
+        //           no room-tile positions exist so stairs always get placed.
+        List<(int x, int z, GameObject prefab)> validPlacements    = new List<(int, int, GameObject)>();
+        List<(int x, int z, GameObject prefab)> fallbackPlacements  = new List<(int, int, GameObject)>();
 
         for (int x = 0; x < dungeonWidth; x++)
         {
@@ -1177,6 +1037,24 @@ public class ProceduralDungeonGenerator : MonoBehaviour
                 if (x != 0 && x != dungeonWidth - 1 && z != 0 && z != dungeonHeight - 1) continue;
                 if (placedTiles[x, z] == null) continue;
 
+                // The one-step-inward tile must be reachable from connStart AND
+                // must be a room tile (all Open/Wall edges) so the safe room that
+                // SafeRoomSetup wraps around it never has a Left/Right/Center gap.
+                Vector2Int inward = DebugEntranceTile(new Vector2Int(x, z));
+                if (!IsInBounds(inward.x, inward.y)) continue;
+                if (!reachable.Contains(inward)) continue;
+                TileConfig inwardCfg = placedConfigs[inward.x, inward.y];
+                if (inwardCfg == null) continue;
+
+                // On level 1+, connStart IS the spawn room (arrival tile).
+                // Keep departure stairs at least 4 tiles (Manhattan) away so the
+                // departure safe room never overlaps or sits adjacent to the spawn room.
+                if (levelIndex > 0)
+                {
+                    int dist = Mathf.Abs(inward.x - connStartX) + Mathf.Abs(inward.y - connStartZ);
+                    if (dist < 4) continue;
+                }
+
                 // Try each stairs tile
                 foreach (GameObject stairsPrefab in stairsPrefabs)
                 {
@@ -1185,10 +1063,20 @@ public class ProceduralDungeonGenerator : MonoBehaviour
 
                     if (IsCompatibleWithNeighbors(x, z, stairsConfig, strict: false))
                     {
-                        validPlacements.Add((x, z, stairsPrefab));
+                        if (inwardCfg.IsRoomTile())
+                            validPlacements.Add((x, z, stairsPrefab));
+                        else
+                            fallbackPlacements.Add((x, z, stairsPrefab));
                     }
                 }
             }
+        }
+
+        // Use fallback only when no preferred positions exist.
+        if (validPlacements.Count == 0 && fallbackPlacements.Count > 0)
+        {
+            validPlacements = fallbackPlacements;
+            Debug.LogWarning($"Level {levelIndex}: No room-tile inward position found for stairs — using fallback.");
         }
 
         // Pick one random valid placement
@@ -1197,8 +1085,7 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             var chosen = validPlacements[Random.Range(0, validPlacements.Count)];
 
             // Remove old tile
-            if (placedTiles[chosen.x, chosen.z] != null)
-                (Application.isPlaying ? (System.Action<Object>)Destroy : DestroyImmediate)(placedTiles[chosen.x, chosen.z]);
+            SafeDestroy(placedTiles[chosen.x, chosen.z]);
 
             // Place stairs at the NEXT level down so player walks down them
             float stairsY = (levelIndex + 1) * -levelHeight; // One level below current
@@ -1214,466 +1101,6 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         else
         {
             Debug.LogWarning($"Level {levelIndex}: Could not find valid position for stairs on edge");
-        }
-    }
-
-    [ContextMenu("Validate Dungeon")]
-    void ValidateDungeon()
-    {
-        if (placedConfigs == null)
-        {
-            Debug.LogWarning("No dungeon to validate - generate one first");
-            return;
-        }
-
-        int errorCount = 0;
-        Debug.Log("=== VALIDATING DUNGEON ===");
-
-        for (int x = 0; x < dungeonWidth; x++)
-        {
-            for (int z = 0; z < dungeonHeight; z++)
-            {
-                if (placedConfigs[x, z] == null) continue;
-                TileConfig config = placedConfigs[x, z];
-                string tileName = placedTiles[x, z] != null ? placedTiles[x, z].name : "Unknown";
-
-                // Check perimeter with correct grid-to-tile mapping
-                if (x == 0 && config.west != EdgeType.Wall)
-                {
-                    Debug.LogError($"✗ ({x},{z}) {tileName}: PERIMETER ERROR - West edge (left) should be Wall, got {config.west}");
-                    errorCount++;
-                }
-                if (x == dungeonWidth - 1 && config.east != EdgeType.Wall)
-                {
-                    Debug.LogError($"✗ ({x},{z}) {tileName}: PERIMETER ERROR - East edge (right) should be Wall, got {config.east}");
-                    errorCount++;
-                }
-                if (z == 0 && config.south != EdgeType.Wall)
-                {
-                    Debug.LogError($"✗ ({x},{z}) {tileName}: PERIMETER ERROR - South edge (back) should be Wall, got {config.south}");
-                    errorCount++;
-                }
-                if (z == dungeonHeight - 1 && config.north != EdgeType.Wall)
-                {
-                    Debug.LogError($"✗ ({x},{z}) {tileName}: PERIMETER ERROR - North edge (front) should be Wall, got {config.north}");
-                    errorCount++;
-                }
-
-                // Check neighbor connections with correct grid mapping (using STRICT rules)
-                if (x > 0 && placedConfigs[x - 1, z] != null)
-                {
-                    if (!EdgesMatch(config.west, placedConfigs[x - 1, z].east, strict: true))
-                    {
-                        // Check if it would pass with relaxed rules
-                        if (EdgesMatch(config.west, placedConfigs[x - 1, z].east, strict: false))
-                        {
-                            Debug.LogWarning($"⚠ ({x},{z}) {tileName}: RELAXED connection - West:{config.west} vs left neighbor East:{placedConfigs[x - 1, z].east}");
-                        }
-                        else
-                        {
-                            Debug.LogError($"✗ ({x},{z}) {tileName}: NEIGHBOR ERROR - West:{config.west} vs left neighbor East:{placedConfigs[x - 1, z].east}");
-                            errorCount++;
-                        }
-                    }
-                }
-                if (x < dungeonWidth - 1 && placedConfigs[x + 1, z] != null)
-                {
-                    if (!EdgesMatch(config.east, placedConfigs[x + 1, z].west, strict: true))
-                    {
-                        if (EdgesMatch(config.east, placedConfigs[x + 1, z].west, strict: false))
-                        {
-                            Debug.LogWarning($"⚠ ({x},{z}) {tileName}: RELAXED connection - East:{config.east} vs right neighbor West:{placedConfigs[x + 1, z].west}");
-                        }
-                        else
-                        {
-                            Debug.LogError($"✗ ({x},{z}) {tileName}: NEIGHBOR ERROR - East:{config.east} vs right neighbor West:{placedConfigs[x + 1, z].west}");
-                            errorCount++;
-                        }
-                    }
-                }
-                if (z < dungeonHeight - 1 && placedConfigs[x, z + 1] != null)
-                {
-                    if (!EdgesMatch(config.north, placedConfigs[x, z + 1].south, strict: true))
-                    {
-                        if (EdgesMatch(config.north, placedConfigs[x, z + 1].south, strict: false))
-                        {
-                            Debug.LogWarning($"⚠ ({x},{z}) {tileName}: RELAXED connection - North:{config.north} vs front neighbor South:{placedConfigs[x, z + 1].south}");
-                        }
-                        else
-                        {
-                            Debug.LogError($"✗ ({x},{z}) {tileName}: NEIGHBOR ERROR - North:{config.north} vs front neighbor South:{placedConfigs[x, z + 1].south}");
-                            errorCount++;
-                        }
-                    }
-                }
-                if (z > 0 && placedConfigs[x, z - 1] != null)
-                {
-                    if (!EdgesMatch(config.south, placedConfigs[x, z - 1].north, strict: true))
-                    {
-                        if (EdgesMatch(config.south, placedConfigs[x, z - 1].north, strict: false))
-                        {
-                            Debug.LogWarning($"⚠ ({x},{z}) {tileName}: RELAXED connection - South:{config.south} vs back neighbor North:{placedConfigs[x, z - 1].north}");
-                        }
-                        else
-                        {
-                            Debug.LogError($"✗ ({x},{z}) {tileName}: NEIGHBOR ERROR - South:{config.south} vs back neighbor North:{placedConfigs[x, z - 1].north}");
-                            errorCount++;
-                        }
-                    }
-                }
-            }
-        }
-
-        Debug.Log("=== VALIDATION COMPLETE ===");
-        if (errorCount == 0)
-            Debug.Log("✓ PASSED - No illegal placements found!");
-        else
-            Debug.LogError($"✗ FAILED - Found {errorCount} illegal placements!");
-    }
-
-    // ══════════════════════════════════════════
-    // CONNECTIVITY VALIDATION & REPAIR METHODS
-    // ══════════════════════════════════════════
-
-    bool IsPassableEdge(EdgeType edge)
-    {
-        // Only Wall edges block movement
-        return edge != EdgeType.Wall;
-    }
-
-    bool CanWalkBetween(int x1, int z1, int x2, int z2)
-    {
-        // Determine direction and check if both tiles have passable edges
-        TileConfig tile1 = placedConfigs[x1, z1];
-        TileConfig tile2 = placedConfigs[x2, z2];
-
-        if (tile1 == null || tile2 == null) return false;
-
-        // Fill tiles are physically open floor (no wall meshes) despite their (W,W,W,W) config.
-        // BUT the neighboring real tile's wall still physically blocks passage.
-        // So we only skip the fill tile's own edge check — the real tile's edge still matters.
-        bool tile1IsFill = (tile1.tileName == "Tiles_01_Fill");
-        bool tile2IsFill = (tile2.tileName == "Tiles_01_Fill");
-
-        // Both fills = both open floor, no walls anywhere, always passable
-        if (tile1IsFill && tile2IsFill)
-            return true;
-
-        // Get the edges each tile has facing the other
-        EdgeType edge1Facing, edge2Facing;
-
-        if (x2 == x1 - 1) { edge1Facing = tile1.west; edge2Facing = tile2.east; }       // tile2 is West
-        else if (x2 == x1 + 1) { edge1Facing = tile1.east; edge2Facing = tile2.west; }   // tile2 is East
-        else if (z2 == z1 + 1) { edge1Facing = tile1.north; edge2Facing = tile2.south; }  // tile2 is North
-        else if (z2 == z1 - 1) { edge1Facing = tile1.south; edge2Facing = tile2.north; }  // tile2 is South
-        else return false;
-
-        // If one tile is fill, only check the OTHER tile's edge (fill has no physical walls)
-        if (tile1IsFill) return IsPassableEdge(edge2Facing);
-        if (tile2IsFill) return IsPassableEdge(edge1Facing);
-
-        // Normal case: both tiles must have passable edges facing each other
-        return IsPassableEdge(edge1Facing) && IsPassableEdge(edge2Facing);
-    }
-
-    // ── Public accessors for CodeNumberManager ──────────────────────────────
-    // Returns all walkable, non-fill tile grid positions reachable from spawn.
-    public List<Vector2Int> GetReachableTilePositions(int startX, int startZ)
-    {
-        HashSet<Vector2Int> reachable = new HashSet<Vector2Int>();
-        Queue<Vector2Int> queue = new Queue<Vector2Int>();
-        Vector2Int start = new Vector2Int(startX, startZ);
-        queue.Enqueue(start);
-        reachable.Add(start);
-
-        while (queue.Count > 0)
-        {
-            Vector2Int current = queue.Dequeue();
-            Vector2Int[] neighbors = {
-                new Vector2Int(current.x - 1, current.y),
-                new Vector2Int(current.x + 1, current.y),
-                new Vector2Int(current.x, current.y + 1),
-                new Vector2Int(current.x, current.y - 1)
-            };
-            foreach (Vector2Int n in neighbors)
-            {
-                if (!IsInBounds(n.x, n.y) || reachable.Contains(n)) continue;
-                if (placedTiles[n.x, n.y] == null) continue;
-                if (CanWalkBetween(current.x, current.y, n.x, n.y))
-                {
-                    reachable.Add(n);
-                    queue.Enqueue(n);
-                }
-            }
-        }
-
-        // Exclude fill tiles — they have no physical walls and are dead zones.
-        List<Vector2Int> result = new List<Vector2Int>();
-        foreach (Vector2Int pos in reachable)
-        {
-            TileConfig cfg = placedConfigs[pos.x, pos.y];
-            if (cfg != null && cfg.tileName != "Tiles_01_Fill")
-                result.Add(pos);
-        }
-        return result;
-    }
-
-    public TileConfig GetTileConfig(int x, int z) => placedConfigs?[x, z];
-    public GameObject GetPlacedTile(int x, int z) => placedTiles?[x, z];
-    public float TileSize => tileSize;
-    public float LevelHeight => levelHeight;
-    public int DungeonWidth => dungeonWidth;
-    public int DungeonHeight => dungeonHeight;
-    public List<Vector2Int> StairsPositions => stairsPositions;
-    // ────────────────────────────────────────────────────────────────────────
-
-    List<Vector2Int> FindIsolatedTiles(int startX, int startZ)
-    {
-        // Flood fill from start position to find all reachable tiles
-        HashSet<Vector2Int> reachable = new HashSet<Vector2Int>();
-        Queue<Vector2Int> queue = new Queue<Vector2Int>();
-        queue.Enqueue(new Vector2Int(startX, startZ));
-        reachable.Add(new Vector2Int(startX, startZ));
-
-        while (queue.Count > 0)
-        {
-            Vector2Int current = queue.Dequeue();
-
-            // Check all 4 neighbors
-            Vector2Int[] neighbors = {
-                new Vector2Int(current.x - 1, current.y), // West
-                new Vector2Int(current.x + 1, current.y), // East
-                new Vector2Int(current.x, current.y + 1), // North
-                new Vector2Int(current.x, current.y - 1)  // South
-            };
-
-            for (int i = 0; i < neighbors.Length; i++)
-            {
-                Vector2Int n = neighbors[i];
-                if (!IsInBounds(n.x, n.y)) continue;
-                if (reachable.Contains(n)) continue;
-                if (placedTiles[n.x, n.y] == null) continue;
-
-                // Check if there's a valid path between current and neighbor
-                if (CanWalkBetween(current.x, current.y, n.x, n.y))
-                {
-                    reachable.Add(n);
-                    queue.Enqueue(n);
-                }
-            }
-        }
-
-        // Find all placed tiles that aren't reachable
-        List<Vector2Int> isolated = new List<Vector2Int>();
-        for (int x = 0; x < dungeonWidth; x++)
-        {
-            for (int z = 0; z < dungeonHeight; z++)
-            {
-                if (placedTiles[x, z] != null && !reachable.Contains(new Vector2Int(x, z)))
-                {
-                    isolated.Add(new Vector2Int(x, z));
-                }
-            }
-        }
-
-        return isolated;
-    }
-
-    bool TryRepairIsolatedTile(int targetX, int targetZ, int startX, int startZ, GameObject parent)
-    {
-        TileConfig targetConfig = placedConfigs[targetX, targetZ];
-        if (targetConfig == null) return false;
-
-        // Strategy 1: If the isolated tile is a fill tile, try replacing it with a real tile
-        if (targetConfig.tileName == "Tiles_01_Fill")
-        {
-            // Remove the fill tile
-            if (placedTiles[targetX, targetZ] != null)
-                (Application.isPlaying ? (System.Action<Object>)Destroy : DestroyImmediate)(placedTiles[targetX, targetZ]);
-            placedTiles[targetX, targetZ] = null;
-            placedConfigs[targetX, targetZ] = null;
-
-            // Try to place a real tile that creates connections
-            bool placed = TryPlaceCompatibleTile(targetX, targetZ, parent);
-            if (placed)
-                return true;
-
-            // Direct replacement failed — all neighbors have Wall facing us so no tile fits.
-            // Don't restore the fill — an empty slot is better than an isolated fill tile.
-            // Fall through to Strategy 2 to try replacing a blocking neighbor instead.
-        }
-
-        // Strategy 2: Find which neighbors block passage and try replacing them
-        // BFS outward from isolated tile to find adjacent tiles that block walkability
-        Queue<Vector2Int> queue = new Queue<Vector2Int>();
-        HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
-        queue.Enqueue(new Vector2Int(targetX, targetZ));
-        visited.Add(new Vector2Int(targetX, targetZ));
-
-        // Collect candidates: tiles adjacent to our isolated cluster that block passage
-        List<Vector2Int> blockingCandidates = new List<Vector2Int>();
-
-        while (queue.Count > 0)
-        {
-            Vector2Int current = queue.Dequeue();
-
-            Vector2Int[] neighbors = {
-                new Vector2Int(current.x - 1, current.y),
-                new Vector2Int(current.x + 1, current.y),
-                new Vector2Int(current.x, current.y + 1),
-                new Vector2Int(current.x, current.y - 1)
-            };
-
-            foreach (Vector2Int n in neighbors)
-            {
-                if (!IsInBounds(n.x, n.y)) continue;
-                if (visited.Contains(n)) continue;
-                if (placedTiles[n.x, n.y] == null) continue;
-
-                visited.Add(n);
-
-                if (!CanWalkBetween(current.x, current.y, n.x, n.y))
-                {
-                    blockingCandidates.Add(n);
-                }
-                else
-                {
-                    queue.Enqueue(n);
-                }
-            }
-        }
-
-        // Try replacing each blocking candidate until one works
-        foreach (Vector2Int blocker in blockingCandidates)
-        {
-            int bx = blocker.x;
-            int bz = blocker.y;
-
-            // Save old tile in case replacement fails
-            GameObject oldTileObj = placedTiles[bx, bz];
-            TileConfig oldConfig = placedConfigs[bx, bz];
-            string oldPrefabName = oldConfig != null ? oldConfig.tileName : null;
-
-            // Remove blocking tile
-            if (oldTileObj != null)
-                (Application.isPlaying ? (System.Action<Object>)Destroy : DestroyImmediate)(oldTileObj);
-            placedTiles[bx, bz] = null;
-            placedConfigs[bx, bz] = null;
-
-            // Try to place a better tile
-            if (TryPlaceCompatibleTile(bx, bz, parent))
-            {
-                // Check if this actually fixes connectivity
-                List<Vector2Int> stillIsolated = FindIsolatedTiles(startX, startZ);
-                bool targetStillIsolated = stillIsolated.Contains(new Vector2Int(targetX, targetZ));
-                if (!targetStillIsolated)
-                {
-                    Debug.Log($"Repair: replaced ({bx},{bz}) to connect ({targetX},{targetZ})");
-                    return true;
-                }
-                // Didn't fix it — undo and try next candidate
-                if (placedTiles[bx, bz] != null)
-                    (Application.isPlaying ? (System.Action<Object>)Destroy : DestroyImmediate)(placedTiles[bx, bz]);
-            }
-
-            // Restore old tile
-            placedTiles[bx, bz] = null;
-            placedConfigs[bx, bz] = null;
-            if (oldPrefabName != null)
-            {
-                GameObject prefab = System.Array.Find(allTilePrefabs, p => p != null && p.name == oldPrefabName);
-                if (prefab != null)
-                    PlaceTile(bx, bz, prefab, parent);
-            }
-        }
-
-        return false;
-    }
-
-    bool ValidateFullConnectivity(int startX, int startZ, GameObject parent, int levelIndex)
-    {
-        int errorCount = 0;
-
-        // 1. Check all tiles are reachable
-        List<Vector2Int> isolated = FindIsolatedTiles(startX, startZ);
-        if (isolated.Count > 0)
-        {
-            Debug.LogError($"✗ Level {levelIndex} validation FAILED: {isolated.Count} isolated tiles");
-            foreach (Vector2Int pos in isolated)
-            {
-                Debug.Log($"    - Isolated tile at ({pos.x},{pos.y})");
-            }
-            errorCount += isolated.Count;
-        }
-
-        // 2. Check perimeter for walk-off points
-        int walkoffCount = 0;
-        for (int x = 0; x < dungeonWidth; x++)
-        {
-            for (int z = 0; z < dungeonHeight; z++)
-            {
-                if (placedTiles[x, z] == null) continue;
-                TileConfig config = placedConfigs[x, z];
-
-                // CRITICAL: Check for Fill tiles at perimeter (config/visual mismatch)
-                if (config.tileName == "Tiles_01_Fill")
-                {
-                    bool isPerimeter = (x == 0 || x == dungeonWidth - 1 ||
-                                        z == 0 || z == dungeonHeight - 1);
-                    if (isPerimeter)
-                    {
-                        Debug.LogError($"✗ Fill tile at perimeter ({x},{z}) - walk-off hazard! (config says Wall but no physical walls)");
-                        walkoffCount++;
-                    }
-                }
-
-                // Check edges for non-wall openings facing outward
-                if (x == 0 && config.west != EdgeType.Wall)
-                {
-                    Debug.LogError($"✗ Walk-off at ({x},{z}): West edge is {config.west}");
-                    walkoffCount++;
-                }
-                if (x == dungeonWidth - 1 && config.east != EdgeType.Wall)
-                {
-                    Debug.LogError($"✗ Walk-off at ({x},{z}): East edge is {config.east}");
-                    walkoffCount++;
-                }
-                if (z == 0 && config.south != EdgeType.Wall)
-                {
-                    Debug.LogError($"✗ Walk-off at ({x},{z}): South edge is {config.south}");
-                    walkoffCount++;
-                }
-                if (z == dungeonHeight - 1 && config.north != EdgeType.Wall)
-                {
-                    Debug.LogError($"✗ Walk-off at ({x},{z}): North edge is {config.north}");
-                    walkoffCount++;
-                }
-            }
-        }
-        errorCount += walkoffCount;
-
-        // 3. Check minimum tile count reached (at least 80% of target)
-        int tileCount = 0;
-        for (int x = 0; x < dungeonWidth; x++)
-            for (int z = 0; z < dungeonHeight; z++)
-                if (placedTiles[x, z] != null) tileCount++;
-
-        if (tileCount < targetTileCount * 0.8f)
-        {
-            Debug.LogError($"✗ Level {levelIndex} validation FAILED: Only {tileCount}/{targetTileCount} tiles (need at least 80%)");
-            errorCount++;
-        }
-
-        // Final result
-        if (errorCount == 0)
-        {
-            Debug.Log($"✓ Level {levelIndex} validation PASSED: {tileCount} tiles, all connected, no walk-offs");
-            return true;
-        }
-        else
-        {
-            Debug.LogError($"✗ Level {levelIndex} validation FAILED: {errorCount} total errors");
-            return false;
         }
     }
 
@@ -1695,13 +1122,22 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         if (spawnRoom != null)
             spawnRoom.ClearAll();
 
+        // Clear all code numbers across all levels
+        CodeNumberManager codeNumbers = FindObjectOfType<CodeNumberManager>();
+        if (codeNumbers != null)
+            codeNumbers.ClearAll();
+
+        // Clear all spawned computers across all levels
+        ComputerSpawner computerSpawner = FindObjectOfType<ComputerSpawner>();
+        if (computerSpawner != null)
+            computerSpawner.ClearAll();
+
         // Clear all level parents and their children
         if (levelParents != null)
         {
             foreach (GameObject levelParent in levelParents)
             {
-                if (levelParent != null)
-                    (Application.isPlaying ? (System.Action<Object>)Destroy : DestroyImmediate)(levelParent);
+                SafeDestroy(levelParent);
             }
             levelParents.Clear();
         }
@@ -1710,14 +1146,12 @@ public class ProceduralDungeonGenerator : MonoBehaviour
         if (placedTiles != null)
             for (int x = 0; x < placedTiles.GetLength(0); x++)
                 for (int z = 0; z < placedTiles.GetLength(1); z++)
-                    if (placedTiles[x, z] != null)
-                        (Application.isPlaying ? (System.Action<Object>)Destroy : DestroyImmediate)(placedTiles[x, z]);
+                    SafeDestroy(placedTiles[x, z]);
 
         if (decorationObjects != null)
         {
             foreach (GameObject decoration in decorationObjects)
-                if (decoration != null)
-                    (Application.isPlaying ? (System.Action<Object>)Destroy : DestroyImmediate)(decoration);
+                SafeDestroy(decoration);
             decorationObjects.Clear();
         }
 
@@ -1727,49 +1161,6 @@ public class ProceduralDungeonGenerator : MonoBehaviour
 
         placedTiles = null;
         placedConfigs = null;
-    }
-
-    void OnDrawGizmos()
-    {
-        if (!showDebugGizmos || allLevelConfigs.Count == 0) return;
-
-        foreach (var kvp in allLevelConfigs)
-        {
-            int levelIndex = kvp.Key;
-            TileConfig[,] configs = kvp.Value;
-            float levelY = levelIndex * -levelHeight;
-
-            for (int x = 0; x < dungeonWidth; x++)
-            {
-                for (int z = 0; z < dungeonHeight; z++)
-                {
-                    if (configs[x, z] == null) continue;
-                    TileConfig config = configs[x, z];
-                    Vector3 centerPos = new Vector3(x * tileSize, levelY + 0.5f, z * tileSize);
-
-                    Gizmos.color = config.IsRoomTile() ? new Color(0.5f, 0.8f, 1f, 0.5f) : new Color(1f, 0.9f, 0.3f, 0.5f);
-                    Gizmos.DrawWireCube(centerPos, Vector3.one * (tileSize * 0.9f));
-
-                    float lineLength = tileSize * 0.35f;
-                    if (config.north != EdgeType.Wall) { Gizmos.color = GetEdgeColor(config.north); Gizmos.DrawLine(centerPos, centerPos + Vector3.forward * lineLength); }
-                    if (config.east != EdgeType.Wall) { Gizmos.color = GetEdgeColor(config.east); Gizmos.DrawLine(centerPos, centerPos + Vector3.right * lineLength); }
-                    if (config.south != EdgeType.Wall) { Gizmos.color = GetEdgeColor(config.south); Gizmos.DrawLine(centerPos, centerPos + Vector3.back * lineLength); }
-                    if (config.west != EdgeType.Wall) { Gizmos.color = GetEdgeColor(config.west); Gizmos.DrawLine(centerPos, centerPos + Vector3.left * lineLength); }
-                }
-            }
-        }
-    }
-
-    Color GetEdgeColor(EdgeType edge)
-    {
-        switch (edge)
-        {
-            case EdgeType.Center: return Color.green;
-            case EdgeType.Left: return Color.cyan;
-            case EdgeType.Right: return Color.magenta;
-            case EdgeType.Open: return Color.yellow;
-            default: return Color.red;
-        }
     }
 
     void SetupKeypads()
@@ -1804,6 +1195,30 @@ public class ProceduralDungeonGenerator : MonoBehaviour
             typeof(NavKeypad.KeypadPlayerInteraction)
                 .GetField("promptText", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
                 ?.SetValue(kp, promptText);
+
+            // Wire the onAccessGranted event to the nearest SlidingDoor so it actually opens.
+            // The keypad and its door are on the same stairs prefab, so we search within
+            // the parent hierarchy first, then fall back to the nearest door in the scene.
+            NavKeypad.Keypad keypadLogic = kp.GetComponentInParent<NavKeypad.Keypad>();
+            if (keypadLogic == null) keypadLogic = kp.GetComponent<NavKeypad.Keypad>();
+
+            if (keypadLogic != null)
+            {
+                NavKeypad.SlidingDoor door = kp.GetComponentInParent<NavKeypad.SlidingDoor>();
+                if (door == null) door = kp.GetComponentInChildren<NavKeypad.SlidingDoor>();
+
+                if (door != null)
+                {
+                    // Remove any stale listeners from a previous generation, then add fresh.
+                    keypadLogic.OnAccessGranted.RemoveAllListeners();
+                    keypadLogic.OnAccessGranted.AddListener(door.OpenDoor);
+                    Debug.Log($"SetupKeypads: Wired {keypadLogic.name} → {door.name}.OpenDoor()");
+                }
+                else
+                {
+                    Debug.LogWarning($"SetupKeypads: No SlidingDoor found near keypad {kp.name}. Check the stairs prefab hierarchy.");
+                }
+            }
         }
 
         Debug.Log($"Setup {keypads.Length} keypads");

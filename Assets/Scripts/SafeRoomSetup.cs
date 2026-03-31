@@ -21,43 +21,58 @@ public class SafeRoomSetup : MonoBehaviour
     // All spawned doors across all levels — used for cleanup on regeneration
     private List<GameObject> spawnedDoors = new List<GameObject>();
 
+    // World-space centres of every safe-room entrance tile, used by NPCSpawnManager
+    // to keep enemies out of safe rooms.
+    private List<Vector3> safeRoomCenters = new List<Vector3>();
+    public List<Vector3> GetSafeRoomCenters() => safeRoomCenters;
+
     public void SetupLevel(ProceduralDungeonGenerator gen, int levelIndex, GameObject levelParent)
     {
         List<Vector2Int> stairsPositions = gen.StairsPositions;
+        if (stairsPositions == null || stairsPositions.Count == 0) return;
 
-        // stairsPositions is populated by PlaceStairsOnEdge — index [levelIndex] is this level's stairs.
-        // Level 0 uses index 0, level 1 uses index 1, etc.
-        if (stairsPositions == null || levelIndex >= stairsPositions.Count)
-        {
-            Debug.LogWarning($"SafeRoomSetup: No stairs position for level {levelIndex}");
-            return;
-        }
+        // Every level needs a safe room around its OWN departure stairs
+        // (the stairs going DOWN to the next level) — exactly like level 0 does.
+        // That uses stairsPositions[levelIndex].
+        if (levelIndex < stairsPositions.Count)
+            SetupStairsEntrance(stairsPositions[levelIndex], levelIndex, gen, levelParent);
 
-        Vector2Int stairsPos = stairsPositions[levelIndex];
+        // Levels above 0 also need a safe room at the ARRIVAL tile — the first tile
+        // the player steps on after descending from the level above.
+        // That uses stairsPositions[levelIndex - 1].
+        if (levelIndex > 0 && (levelIndex - 1) < stairsPositions.Count)
+            SetupStairsEntrance(stairsPositions[levelIndex - 1], levelIndex, gen, levelParent);
+    }
+
+    // Places safe room doors on the entrance tile one step inward from the given stairs position.
+    // Skips the side facing back toward the stairs (it already has the stairway's own opening).
+    private void SetupStairsEntrance(Vector2Int stairsPos, int levelIndex,
+                                     ProceduralDungeonGenerator gen, GameObject levelParent)
+    {
         Vector2Int entrancePos = GetEntranceTile(stairsPos, gen.DungeonWidth, gen.DungeonHeight);
 
         ProceduralDungeonGenerator.TileConfig cfg = gen.GetTileConfig(entrancePos.x, entrancePos.y);
         if (cfg == null)
         {
-            Debug.LogWarning($"SafeRoomSetup: No tile config at entrance tile ({entrancePos.x},{entrancePos.y}) for level {levelIndex}");
+            Debug.LogWarning($"SafeRoomSetup: No tile config at ({entrancePos.x},{entrancePos.y}) for level {levelIndex} stairs at {stairsPos}");
             return;
         }
 
         float tileSize = gen.TileSize;
-        float levelY = levelIndex * -gen.LevelHeight;
+        float levelY   = levelIndex * -gen.LevelHeight;
         Vector3 tileCenter = new Vector3(entrancePos.x * tileSize, levelY + doorSpawnY, entrancePos.y * tileSize);
 
-        // Determine which direction of the entrance tile faces back toward the stairs.
-        // That side already has the stairs prefab's own entry/door — skip it.
+        // Track this entrance centre so NPCSpawnManager can exclude the area.
+        safeRoomCenters.Add(tileCenter);
+
         string skipDir = GetStairsDirection(stairsPos, gen.DungeonWidth, gen.DungeonHeight);
 
-        // Place a door on every Open side except the one facing back to the stairs.
         TryPlaceDoor(cfg.north, doorNorth, tileCenter, new Vector3(0, 0,  tileSize * 0.5f), levelParent, skipDir == "north");
         TryPlaceDoor(cfg.east,  doorEast,  tileCenter, new Vector3( tileSize * 0.5f, 0, 0), levelParent, skipDir == "east");
         TryPlaceDoor(cfg.south, doorSouth, tileCenter, new Vector3(0, 0, -tileSize * 0.5f), levelParent, skipDir == "south");
         TryPlaceDoor(cfg.west,  doorWest,  tileCenter, new Vector3(-tileSize * 0.5f, 0, 0), levelParent, skipDir == "west");
 
-        Debug.Log($"SafeRoomSetup: Set up safe room at entrance tile ({entrancePos.x},{entrancePos.y}) for level {levelIndex}");
+        Debug.Log($"SafeRoomSetup: Doors placed at ({entrancePos.x},{entrancePos.y}) level {levelIndex} (stairs at {stairsPos})");
     }
 
     private void TryPlaceDoor(
@@ -70,10 +85,9 @@ public class SafeRoomSetup : MonoBehaviour
     {
         // Skip the side that faces back toward the stairs — it already has its own entry.
         if (skip) return;
-        // Only place on passable edges. Wall edges have geometry already.
-        // Check all non-Wall types (Open, Center, Left, Right) — any of these mean
-        // the player/NPC can walk through and needs a door wall blocking it.
-        if (edge == ProceduralDungeonGenerator.EdgeType.Wall) return;
+        // Only place doors at genuine wide-open junctions.
+        // Skipping Center/Left/Right prevents misaligned doors against corridor openings.
+        if (edge != ProceduralDungeonGenerator.EdgeType.Open) return;
         if (prefab == null)
         {
             Debug.LogWarning("SafeRoomSetup: Door prefab not assigned for an open side.");
@@ -119,5 +133,6 @@ public class SafeRoomSetup : MonoBehaviour
                 DestroyImmediate(door);
         }
         spawnedDoors.Clear();
+        safeRoomCenters.Clear();
     }
 }
