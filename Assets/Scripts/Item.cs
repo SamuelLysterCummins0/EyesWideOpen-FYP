@@ -22,7 +22,8 @@ public enum ItemType
         CarPart,
         Mask,
         Battery,
-        Flare
+        Flare,
+        Goggles
     }
     
     public ItemType itemType;
@@ -81,6 +82,11 @@ public enum ItemType
         FlareController.Instance.UseFlare();
     }
     break;
+
+            case ItemType.Goggles:
+                if (GoggleController.Instance != null)
+                    GoggleController.Instance.UseGoggles();
+                break;
 
         }
     }

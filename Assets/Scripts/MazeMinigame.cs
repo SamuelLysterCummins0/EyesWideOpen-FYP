@@ -37,6 +37,13 @@ public class MazeMinigame : MonoBehaviour
     // so that ScreenPointToLocalPointInRectangle maps correctly onto the World Space canvas
     public Camera mazeCamera;
 
+    // Read by ComputerInteraction after the first StartMaze() call to save the layout
+    public bool[,] HWalls => hWalls;
+    public bool[,] VWalls => vWalls;
+
+    // Set by ComputerInteraction so we know which level's digit to reveal on win
+    public int levelIndex = 0;
+
     public System.Action OnMazeSolvedCallback;
 
     // --- Maze data ---
@@ -86,10 +93,23 @@ public class MazeMinigame : MonoBehaviour
     // Called by ComputerInteraction.StartInteraction()
     // screenFace = the ScreenFace child Transform on the computer prefab —
     // its position is the screen surface centre, its forward is the screen's outward normal.
-    public void StartMaze(Transform screenFace)
+    // existingHWalls / existingVWalls: pass the saved arrays from ComputerInteraction to
+    // restore the same layout on re-entry instead of generating a fresh random maze.
+    public void StartMaze(Transform screenFace, bool[,] existingHWalls = null, bool[,] existingVWalls = null)
     {
         ClearMaze();
-        GenerateMaze();
+
+        if (existingHWalls != null && existingVWalls != null)
+        {
+            // Restore saved layout — player gets the same maze every time they re-enter
+            hWalls = existingHWalls;
+            vWalls = existingVWalls;
+        }
+        else
+        {
+            GenerateMaze();
+        }
+
         BuildMazeVisuals();
 
         if (mazeCanvasRoot != null)
@@ -131,6 +151,9 @@ public class MazeMinigame : MonoBehaviour
     {
         isActive = false;
         StopAllCoroutines();
+
+        // Restore cursor visibility in case WinSequence hid it
+        if (mazeCursorRect != null) mazeCursorRect.gameObject.SetActive(true);
 
         if (mazeCanvasRoot != null)
         {
@@ -444,8 +467,118 @@ public class MazeMinigame : MonoBehaviour
 
     private IEnumerator WinSequence()
     {
-        yield return new WaitForSeconds(1.0f);
+        yield return new WaitForSeconds(0.8f);
+
+        // ── Hide the maze walls, markers and cursor ───────────────────────────
+        foreach (GameObject go in generatedObjects)
+            if (go != null) go.SetActive(false);
+
+        if (mazeCursorRect != null) mazeCursorRect.gameObject.SetActive(false);
+
+        // ── Resolve the digit ─────────────────────────────────────────────────
+        // Digit slot 3 is never placed on a wall — it is always revealed here.
+        // GetDigit returns -1 if the level state isn't registered yet, so we
+        // fall back to a random digit to guarantee something is always shown.
+        CodeNumberManager mgr = CodeNumberManager.Instance;
+        if (mgr == null) mgr = FindObjectOfType<CodeNumberManager>();
+
+        int digit = -1;
+        if (mgr != null) digit = mgr.GetDigit(levelIndex, 3);
+        if (digit < 0)   digit = Random.Range(0, 10);   // safe fallback
+
+        Debug.Log($"[MazeMinigame] Win — revealing digit {digit} for level {levelIndex} slot 3");
+
+        // ── Show the digit on the canvas ──────────────────────────────────────
+        // Clear status text — the reveal label handles all messaging
+        if (statusText != null) statusText.text = "";
+        ShowDigitReveal(digit);
+
+        // ── Report to CodeNumberManager — always, digit is guaranteed valid ───
+        if (mgr != null)
+            mgr.OnDigitCollected(levelIndex, 3, digit);
+
+        yield return new WaitForSeconds(3.0f);
+
         OnMazeSolvedCallback?.Invoke();
+    }
+
+    // Spawns a large glowing digit in the centre of the canvas.
+    // Copies the font from statusText so the runtime-created TMP_Text has a
+    // valid font asset and actually renders (TMP_Text added via AddComponent has
+    // no font by default and is invisible without one).
+    private void ShowDigitReveal(int digit)
+    {
+        if (mazeContainerRect == null) return;
+
+        // Grab the font asset from an existing working TMP_Text in this canvas
+        TMPro.TMP_FontAsset font = (statusText != null) ? statusText.font : null;
+
+        // ── "TERMINAL CODE :" label ───────────────────────────────────────────
+        TMPro.TMP_Text labelText = SpawnRevealText(
+            "RevealLabel",
+            "TERMINAL CODE :",
+            new Vector2(0f, 80f),
+            new Vector2(500f, 60f),
+            28f,
+            new Color(0.2f, 1f, 0.3f, 0.85f),
+            font);
+
+        // ── Large digit ───────────────────────────────────────────────────────
+        TMPro.TMP_Text digitText = SpawnRevealText(
+            "RevealDigit",
+            digit.ToString(),
+            new Vector2(0f, -20f),
+            new Vector2(300f, 220f),
+            180f,
+            new Color(0.15f, 1f, 0.25f, 1f),
+            font);
+
+        if (digitText != null)
+        {
+            digitText.fontStyle = TMPro.FontStyles.Bold;
+            StartCoroutine(PulseRevealDigit(digitText));
+        }
+    }
+
+    // Helper: creates one TMP_Text child of mazeContainerRect, copies font, registers for cleanup
+    private TMPro.TMP_Text SpawnRevealText(string objName, string content,
+                                           Vector2 anchoredPos, Vector2 size,
+                                           float fontSize, Color color,
+                                           TMPro.TMP_FontAsset font)
+    {
+        GameObject go = new GameObject(objName, typeof(RectTransform));
+        go.transform.SetParent(mazeContainerRect, false);
+
+        RectTransform rt = go.GetComponent<RectTransform>();
+        rt.anchorMin        = new Vector2(0.5f, 0.5f);
+        rt.anchorMax        = new Vector2(0.5f, 0.5f);
+        rt.pivot            = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = anchoredPos;
+        rt.sizeDelta        = size;
+
+        // Add TMP_Text AFTER setting up the RectTransform to avoid layout warnings
+        TMPro.TMP_Text txt = go.AddComponent<TMPro.TextMeshProUGUI>();
+        if (font != null) txt.font = font;   // copy font — without this the text is invisible
+        txt.text      = content;
+        txt.fontSize  = fontSize;
+        txt.alignment = TMPro.TextAlignmentOptions.Center;
+        txt.color     = color;
+        txt.raycastTarget = false;
+
+        generatedObjects.Add(go);
+        return txt;
+    }
+
+    private IEnumerator PulseRevealDigit(TMPro.TMP_Text text)
+    {
+        Color baseColor = new Color(0.15f, 1f,  0.25f, 1f);
+        Color glowColor = new Color(0.6f,  1f,  0.7f,  1f);
+        while (text != null)
+        {
+            float t = Mathf.PingPong(Time.time * 3f, 1f);
+            text.color = Color.Lerp(baseColor, glowColor, t);
+            yield return null;
+        }
     }
 
     private void ResetCursorToStart()

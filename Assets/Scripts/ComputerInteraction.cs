@@ -32,10 +32,22 @@ public class ComputerInteraction : MonoBehaviour
     private Transform cameraTransform;
     private SUPERCharacterAIO playerController;
     private GameObject player;
+    private DoorWinkInteraction doorInteraction;
 
     private Transform computerCameraPosition;
     private Vector3 originalCameraPosition;
     private Quaternion originalCameraRotation;
+
+    // Set by ComputerRoomSetup after spawning so the maze knows which level's digit to reveal
+    [HideInInspector] public int levelIndex = 0;
+
+    // --- Per-computer maze state ---
+    // Saved on first entry so every re-entry shows the same layout
+    private bool[,] savedHWalls;
+    private bool[,] savedVWalls;
+    private bool    mazeDataSaved = false;
+    // Set to true once the player completes this terminal — blocks all future access
+    private bool    mazeCompleted = false;
 
     // --- State ---
     private bool isInteracting = false;
@@ -68,8 +80,9 @@ public class ComputerInteraction : MonoBehaviour
                 : Color.black;
         }
 
-        if (gazeDetector == null)  gazeDetector  = FindObjectOfType<GazeDetector>();
-        if (blinkDetector == null) blinkDetector = FindObjectOfType<BlinkDetector>();
+        if (gazeDetector == null)    gazeDetector    = FindObjectOfType<GazeDetector>();
+        if (blinkDetector == null)   blinkDetector   = FindObjectOfType<BlinkDetector>();
+        if (doorInteraction == null) doorInteraction = FindObjectOfType<DoorWinkInteraction>();
         // MazeMinigame is found lazily in StartInteraction() — not here —
         // because this Awake() fires during Instantiate() inside ComputerSpawner,
         // before Unity has finished registering all scene objects.
@@ -102,7 +115,10 @@ public class ComputerInteraction : MonoBehaviour
 
         if (!isInteracting && playerInRange)
         {
-            CheckGazeInteraction();
+            if (!mazeCompleted)
+                CheckGazeInteraction();
+            else
+                ResetGazeState(); // clear any residual screen glow
         }
 
         if (isInteracting)
@@ -177,7 +193,13 @@ public class ComputerInteraction : MonoBehaviour
         if (mazeMinigame == null)
         {
             Debug.LogError("[ComputerInteraction] MazeMinigame not found — aborting interaction. Make sure MazeCanvas is in the scene.");
-            return; // Do NOT proceed — prevents camera locking with no maze showing
+            return;
+        }
+
+        if (mazeCompleted)
+        {
+            Debug.Log("[ComputerInteraction] This terminal has already been completed — access denied.");
+            return;
         }
 
         // Always re-register the callback in case it was lost (e.g. after a scene reload)
@@ -186,6 +208,9 @@ public class ComputerInteraction : MonoBehaviour
         Debug.Log("=== STARTING COMPUTER INTERACTION ===");
         isInteracting = true;
         ResetGazeState();
+
+        // Disable door interaction so the gaze cursor can't trigger doors during the maze
+        if (doorInteraction != null) doorInteraction.enabled = false;
 
         if (playerController != null)
             playerController.enabled = false;
@@ -206,10 +231,21 @@ public class ComputerInteraction : MonoBehaviour
 
         if (mazeMinigame != null)
         {
-            // Pass the camera AFTER it has moved, and the screen face transform so the
-            // canvas repositions itself onto this specific computer's screen
             mazeMinigame.mazeCamera = playerCamera;
-            mazeMinigame.StartMaze(screenFace);
+            mazeMinigame.levelIndex = levelIndex;
+
+            // Pass saved wall data so re-entry always shows the same maze.
+            // On the very first entry savedHWalls is null, which tells StartMaze to generate fresh.
+            mazeMinigame.StartMaze(screenFace, savedHWalls, savedVWalls);
+
+            // Save the generated layout immediately after the first StartMaze call
+            // so every subsequent entry (and every other computer) gets its own fixed layout.
+            if (!mazeDataSaved)
+            {
+                savedHWalls   = CopyBoolArray(mazeMinigame.HWalls);
+                savedVWalls   = CopyBoolArray(mazeMinigame.VWalls);
+                mazeDataSaved = true;
+            }
         }
     }
 
@@ -224,6 +260,9 @@ public class ComputerInteraction : MonoBehaviour
         if (playerController != null)
             playerController.enabled = true;
 
+        // Re-enable door interaction now that the maze is closed
+        if (doorInteraction != null) doorInteraction.enabled = true;
+
         // Guard against the camera transform being destroyed (e.g. when exiting Play mode)
         if (cameraTransform != null)
         {
@@ -237,9 +276,20 @@ public class ComputerInteraction : MonoBehaviour
 
     private void OnMazeSolvedInternal()
     {
+        mazeCompleted = true; // lock this terminal permanently
         Debug.Log("Maze solved! Firing OnMazeSolved event.");
         OnMazeSolved.Invoke();
         Invoke(nameof(EndInteraction), 1.5f);
+    }
+
+    // Deep-copies a 2-D bool array so each ComputerInteraction holds its own independent layout
+    private static bool[,] CopyBoolArray(bool[,] src)
+    {
+        if (src == null) return null;
+        int w = src.GetLength(0), h = src.GetLength(1);
+        bool[,] dst = new bool[w, h];
+        System.Array.Copy(src, dst, src.Length);
+        return dst;
     }
 
     private void OnDisable()

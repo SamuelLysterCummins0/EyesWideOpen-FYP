@@ -68,4 +68,31 @@ public class CodeNumberHUD : MonoBehaviour
         if (counterText != null)
             counterText.text = "All codes found - use keypad!";
     }
+
+    /// <summary>
+    /// Called by PowerManager when the player enters a level with a power outage.
+    /// Hides the digit slots and replaces the counter text with a power prompt.
+    /// </summary>
+    public void ShowPowerMessage()
+    {
+        foreach (TMP_Text slot in digitSlots)
+            if (slot != null) slot.gameObject.SetActive(false);
+
+        if (counterText != null)
+            counterText.text = "Turn on the power";
+    }
+
+    /// <summary>
+    /// Called by PowerManager when the powerbox is activated.
+    /// Restores the digit slots — CodeNumberManager.ActivateLevel will then
+    /// re-fill any already-collected slots.
+    /// </summary>
+    public void RestoreCodeDisplay()
+    {
+        foreach (TMP_Text slot in digitSlots)
+            if (slot != null) slot.gameObject.SetActive(true);
+
+        if (counterText != null)
+            counterText.text = "0 / 4 codes found";
+    }
 }

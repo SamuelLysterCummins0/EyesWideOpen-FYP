@@ -51,8 +51,15 @@ public class GameManager : MonoBehaviour
     public void SetCurrentLevel(int level)
     {
         currentLevel = level;
+        Debug.Log($"[GameManager] SetCurrentLevel({level})");
 
-        if (CodeNumberManager.Instance != null)
+        if (PowerManager.Instance == null)
+            Debug.LogError("[GameManager] PowerManager.Instance is NULL — add a PowerManager component to a GameObject in the scene!");
+        else
+            PowerManager.Instance.OnEnterLevel(level);
+
+        bool powerOn = PowerManager.Instance == null || PowerManager.Instance.IsPowerOn;
+        if (powerOn && CodeNumberManager.Instance != null)
             CodeNumberManager.Instance.ActivateLevel(level);
     }
 

@@ -387,7 +387,9 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         }
 
         AddDecorations(levelParent);
-        PlaceStairsOnEdge(levelParent, levelIndex, connStartX, connStartZ);
+        // Only place departure stairs if there is a level below this one
+        if (levelIndex < numberOfLevels - 1)
+            PlaceStairsOnEdge(levelParent, levelIndex, connStartX, connStartZ);
 
         // Set up safe room doors on the entrance tile (one step inward from the stairs)
         SafeRoomSetup safeRoom = FindObjectOfType<SafeRoomSetup>();
@@ -401,15 +403,39 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
 
         SetupKeypads();
 
-        // Notify CodeNumberManager so it can spawn collectible code numbers for this level
-        CodeNumberManager codeManager = FindObjectOfType<CodeNumberManager>();
-        if (codeManager != null)
-            codeManager.InitializeForLevel(this, levelIndex, connStartX, connStartZ);
+        // Level-specific spawn config:
+        //   Level 0: 4 wall numbers only
+        //   Level 1: 3 wall numbers + computer terminal (slot 3)
+        //   Level 2: 2 wall numbers + hidden room (slot 2) + computer terminal (slot 3)
+        int wallNumberCount = levelIndex == 0 ? 4 : (levelIndex == 1 ? 3 : 2);
+        bool spawnHiddenRoom = levelIndex >= 2;
+        bool spawnComputer   = levelIndex >= 1;
 
-        // Spawn one computer terminal on a reachable floor tile for this level
-        ComputerSpawner computerSpawner = FindObjectOfType<ComputerSpawner>();
-        if (computerSpawner != null)
-            computerSpawner.InitializeForLevel(this, levelIndex, connStartX, connStartZ);
+        // Hidden room setup runs BEFORE CodeNumberManager so it can register the
+        // hidden-room tile as excluded (preventing a duplicate wall number there).
+        HiddenRoomSetup hiddenRoom = HiddenRoomSetup.Instance;
+        if (hiddenRoom == null) hiddenRoom = FindObjectOfType<HiddenRoomSetup>();
+        if (hiddenRoom != null && spawnHiddenRoom)
+            hiddenRoom.SetupLevel(this, levelIndex, levelParent, spawnRoom, connStartX, connStartZ);
+
+        // Notify CodeNumberManager so it can spawn collectible code numbers for this level.
+        // Always use the singleton Instance so InitializeForLevel and OnDigitCollected
+        // both operate on the exact same object (FindObjectOfType can return a duplicate
+        // that is still alive but already scheduled for Destroy, causing a state mismatch).
+        CodeNumberManager codeManager = CodeNumberManager.Instance;
+        if (codeManager == null) codeManager = FindObjectOfType<CodeNumberManager>();
+        if (codeManager != null)
+            codeManager.InitializeForLevel(this, levelIndex, connStartX, connStartZ, wallNumberCount);
+
+        // Now that CodeNumberManager has generated digits, spawn the hidden room's number (slot 2)
+        if (hiddenRoom != null && spawnHiddenRoom)
+            hiddenRoom.SpawnNumberAfterInit(levelIndex, tileSize);
+
+        // Spawn computer terminal in its own safe room on a perimeter tile
+        // Pass SpawnRoomSetup so the computer room avoids picking the same tile
+        ComputerRoomSetup computerRoom = FindObjectOfType<ComputerRoomSetup>();
+        if (computerRoom != null && spawnComputer)
+            computerRoom.SetupLevel(this, levelIndex, levelParent, spawnRoom);
 
         PrintLevelDebug(levelIndex, connStartX, connStartZ);
 
@@ -1127,10 +1153,16 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (codeNumbers != null)
             codeNumbers.ClearAll();
 
-        // Clear all spawned computers across all levels
-        ComputerSpawner computerSpawner = FindObjectOfType<ComputerSpawner>();
-        if (computerSpawner != null)
-            computerSpawner.ClearAll();
+        // Clear all computer rooms across all levels
+        ComputerRoomSetup computerRoom = FindObjectOfType<ComputerRoomSetup>();
+        if (computerRoom != null)
+            computerRoom.ClearAll();
+
+        // Clear hidden room breakable walls, goggles pickup, and excluded tile registry
+        HiddenRoomSetup hiddenRoom = HiddenRoomSetup.Instance;
+        if (hiddenRoom == null) hiddenRoom = FindObjectOfType<HiddenRoomSetup>();
+        if (hiddenRoom != null)
+            hiddenRoom.ClearAll();
 
         // Clear all level parents and their children
         if (levelParents != null)

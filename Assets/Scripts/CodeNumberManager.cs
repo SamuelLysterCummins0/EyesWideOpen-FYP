@@ -42,6 +42,9 @@ public class CodeNumberManager : MonoBehaviour
     private Dictionary<int, LevelData> levelStates = new Dictionary<int, LevelData>();
     private int currentInitLevel = 0; // set at the top of InitializeForLevel
 
+    // Tiles registered by HiddenRoomSetup that should be skipped during wall-number placement
+    private HashSet<Vector2Int> excludedTiles = new HashSet<Vector2Int>();
+
     // ── Unity Lifecycle ──────────────────────────────────────────────────────
     private void Awake()
     {
@@ -58,7 +61,7 @@ public class CodeNumberManager : MonoBehaviour
     /// Entry point called by the dungeon generator after a level finishes building.
     /// Clears any previous state, generates a new code, and spawns numbers.
     /// </summary>
-    public void InitializeForLevel(ProceduralDungeonGenerator generator, int levelIndex, int startX, int startZ)
+    public void InitializeForLevel(ProceduralDungeonGenerator generator, int levelIndex, int startX, int startZ, int wallNumberCount = 2)
     {
         currentInitLevel = levelIndex;
 
@@ -97,9 +100,9 @@ public class CodeNumberManager : MonoBehaviour
         // Find all valid, reachable tile positions.
         List<Vector2Int> reachable = generator.GetReachableTilePositions(startX, startZ);
 
-        if (reachable.Count < 4)
+        if (reachable.Count < 2)
         {
-            Debug.LogWarning("[CodeNumberManager] Not enough reachable tiles to place 4 numbers.");
+            Debug.LogWarning("[CodeNumberManager] Not enough reachable tiles to place wall numbers.");
             return;
         }
 
@@ -110,6 +113,9 @@ public class CodeNumberManager : MonoBehaviour
 
         foreach (Vector2Int gridPos in reachable)
         {
+            // Skip tiles reserved for the hidden room by HiddenRoomSetup
+            if (excludedTiles.Contains(gridPos)) continue;
+
             GameObject tile = generator.GetPlacedTile(gridPos.x, gridPos.y);
             ProceduralDungeonGenerator.TileConfig config = generator.GetTileConfig(gridPos.x, gridPos.y);
 
@@ -138,12 +144,13 @@ public class CodeNumberManager : MonoBehaviour
             int capturedLevel = levelIndex;
             SpawnCodeNumber(wallPos.Value, wallNormal, data.digits[digitIndex], digitIndex, capturedLevel);
 
-            if (chosenWorldPositions.Count >= 4) break;
+            // Only 2 wall numbers — slot 2 comes from the hidden room, slot 3 from the computer
+            if (chosenWorldPositions.Count >= wallNumberCount) break;
         }
 
-        if (chosenWorldPositions.Count < 4)
+        if (chosenWorldPositions.Count < wallNumberCount)
         {
-            Debug.LogWarning($"[CodeNumberManager] Could only place {chosenWorldPositions.Count}/4 numbers. Try reducing minSpreadDistance.");
+            Debug.LogWarning($"[CodeNumberManager] Could only place {chosenWorldPositions.Count}/{wallNumberCount} wall numbers. Try reducing minSpreadDistance.");
         }
 
         if (hud != null) hud.ResetDisplay();
@@ -242,12 +249,32 @@ public class CodeNumberManager : MonoBehaviour
     // ── Collection Callback ───────────────────────────────────────────────────
 
     /// <summary>
-    /// Called by a CodeNumber when the player successfully gazes at it.
+    /// Returns the pre-generated digit for a given level and slot index (0–3).
+    /// Digit 3 is not spawned on a wall — it is revealed by the computer terminal maze.
+    /// </summary>
+    public int GetDigit(int levelIndex, int orderIndex)
+    {
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return -1;
+        if (orderIndex < 0 || orderIndex >= data.digits.Length) return -1;
+        return data.digits[orderIndex];
+    }
+
+    /// <summary>
+    /// Called by a CodeNumber (wall) or by MazeMinigame (computer terminal) when a digit is collected.
     /// levelIndex tells us which level's state and keypad to update.
     /// </summary>
     public void OnDigitCollected(int levelIndex, int orderIndex, int digit)
     {
-        if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return;
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data))
+        {
+            // Level state missing — create a minimal one so the HUD can still be updated.
+            // This is a fallback for cases where InitializeForLevel ran on a different instance.
+            Debug.LogWarning($"[CodeNumberManager] OnDigitCollected: no level state for level {levelIndex} — creating fallback state.");
+            data = new LevelData();
+            if (orderIndex >= 0 && orderIndex < data.digits.Length)
+                data.digits[orderIndex] = digit;
+            levelStates[levelIndex] = data;
+        }
         if (data.collected[orderIndex]) return; // Already collected.
 
         data.collected[orderIndex] = true;
@@ -255,7 +282,18 @@ public class CodeNumberManager : MonoBehaviour
 
         Debug.Log($"[CodeNumberManager] Level {levelIndex} digit {orderIndex + 1}/4 collected: {digit}");
 
-        if (hud != null) hud.UpdateSlot(orderIndex, digit, data.collectedCount);
+        // Re-find HUD every time in case it wasn't assigned during InitializeForLevel
+        // (e.g. when called from MazeMinigame after the level was already set up)
+        if (hud == null) hud = FindObjectOfType<CodeNumberHUD>(true);
+
+        if (hud != null)
+        {
+            hud.UpdateSlot(orderIndex, digit, data.collectedCount);
+        }
+        else
+        {
+            Debug.LogWarning("[CodeNumberManager] CodeNumberHUD not found — digit collected but HUD not updated.");
+        }
 
         if (data.collectedCount >= 4)
         {
@@ -315,6 +353,79 @@ public class CodeNumberManager : MonoBehaviour
             }
         }
         levelStates.Clear();
+    }
+
+    // ── Hidden room / excluded tile integration ───────────────────────────────
+
+    /// <summary>
+    /// Called by HiddenRoomSetup to place the slot-2 code number on a Wall face
+    /// inside the hidden room tile.
+    /// Returns the spawned GameObject so HiddenRoomSetup can track it for cleanup.
+    /// NOTE: Must be called AFTER InitializeForLevel so level state exists.
+    /// </summary>
+    public GameObject SpawnHiddenRoomNumber(
+        GameObject tile,
+        ProceduralDungeonGenerator.TileConfig config,
+        float tileSize,
+        int levelIndex)
+    {
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data))
+        {
+            Debug.LogWarning("[CodeNumberManager] SpawnHiddenRoomNumber: level state not found — was InitializeForLevel called first?");
+            return null;
+        }
+
+        Vector3? wallPos = FindValidWallSurface(tile, config, tileSize, out Vector3 wallNormal);
+        if (wallPos == null)
+        {
+            // This means the tile has NO Wall-type edges at all — FindHiddenRoomTile should have prevented this
+            Debug.LogError($"[CodeNumberManager] SpawnHiddenRoomNumber(L{levelIndex}): FindValidWallSurface returned null. " +
+                           $"Tile edges — N:{config.north} S:{config.south} E:{config.east} W:{config.west}. " +
+                           "Ensure the hidden room tile has at least one Wall edge.");
+            return null;
+        }
+
+        Debug.Log($"[CodeNumberManager] SpawnHiddenRoomNumber(L{levelIndex}): wall surface found at {wallPos.Value}, normal {wallNormal}.");
+
+        int digitIndex = 2; // slot 2 is always the hidden-room number
+        int digit      = data.digits[digitIndex];
+
+        if (codeNumberPrefab == null)
+        {
+            Debug.LogError("[CodeNumberManager] codeNumberPrefab is not assigned!");
+            return null;
+        }
+
+        Quaternion rotation = Quaternion.LookRotation(-wallNormal, Vector3.up);
+        GameObject obj = Instantiate(codeNumberPrefab, wallPos.Value, rotation);
+        obj.name = $"CodeNumber_L{levelIndex}_Hidden_{digit}";
+
+        data.numbers.Add(obj);
+
+        CodeNumber codeNum = obj.GetComponent<CodeNumber>();
+        if (codeNum != null)
+            codeNum.Initialise(digit, digitIndex, (oi, d) => OnDigitCollected(levelIndex, oi, d));
+        else
+            Debug.LogError("[CodeNumberManager] codeNumberPrefab is missing CodeNumber component!");
+
+        return obj;
+    }
+
+    /// <summary>
+    /// Registers a tile grid position that should be skipped during wall-number placement.
+    /// Called by HiddenRoomSetup before InitializeForLevel runs.
+    /// </summary>
+    public void ExcludeTile(Vector2Int gridPos)
+    {
+        excludedTiles.Add(gridPos);
+    }
+
+    /// <summary>
+    /// Clears the excluded-tile set — called by HiddenRoomSetup.ClearAll() before regeneration.
+    /// </summary>
+    public void ClearExcludedTiles()
+    {
+        excludedTiles.Clear();
     }
 
     private void ShuffleList<T>(List<T> list)

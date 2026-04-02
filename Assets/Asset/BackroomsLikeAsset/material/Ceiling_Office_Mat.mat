@@ -17,7 +17,7 @@ Material:
   m_LightmapFlags: 1
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
-  m_CustomRenderQueue: -1
+  m_CustomRenderQueue: 2450
   stringTagMap:
     RenderType: TransparentCutout
   disabledShaderPasses: []
@@ -71,7 +71,7 @@ Material:
     - _CustomColor: 1
     - _DstBlend: 0
     - _Metallic: 0
-    - _Normal_Strength: 1
+    - _Normal_Strength: 2
     - _QueueControl: 0
     - _QueueOffset: 0
     - _ReceiveShadows: 1
@@ -85,7 +85,7 @@ Material:
     m_Colors:
     - _Blue_Area_Color: {r: 1, g: 1, b: 1, a: 0}
     - _ColorOverlay: {r: 1, g: 1, b: 1, a: 0}
-    - _Emission_Color: {r: 6.0235295, g: 6.0235295, b: 6.0235295, a: 0}
+    - _Emission_Color: {r: 6.4222336, g: 6.4222336, b: 6.4222336, a: 0}
     - _Green_Area_Color: {r: 1, g: 1, b: 1, a: 0}
     - _Red_Area_Color: {r: 1, g: 1, b: 1, a: 0}
     - _UV_Tiling: {r: 1, g: 1, b: 0, a: 0}

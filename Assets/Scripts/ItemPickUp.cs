@@ -12,6 +12,7 @@ public class ItemPickUp : MonoBehaviour
     private static bool hasShownMaskInstructions = false;
     private static bool hasShownFlareInstructions = false;
     private static bool hasShownConsumableInstructions = false;
+    private static bool hasShownGogglesInstructions = false;
 
     void Start()
     {
@@ -63,6 +64,11 @@ public class ItemPickUp : MonoBehaviour
             {
                 InstructionUI.Instance.ShowPanel(Item.itemType);
                 hasShownConsumableInstructions = true;
+            }
+            else if (Item.itemType == Item.ItemType.Goggles && !hasShownGogglesInstructions)
+            {
+                InstructionUI.Instance.ShowPanel(Item.itemType);
+                hasShownGogglesInstructions = true;
             }
 
             InventoryManager.Instance.Add(Item);
