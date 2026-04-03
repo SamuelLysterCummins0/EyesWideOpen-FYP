@@ -86,15 +86,33 @@ public class CodeNumberManager : MonoBehaviour
         if (hud == null) Debug.LogWarning("[CodeNumberManager] CodeNumberHUD not found in scene.");
 
         // Push code to keypad.
-        data.keypad = FindObjectOfType<Keypad>();
+        // Multiple levels are generated simultaneously, so find all keypads and pick the one
+        // closest in Y to this level's floor height — but only if it falls within half a level
+        // height. Final levels have no keypad (no stairs), so they get none rather than stealing
+        // the previous level's keypad and overwriting its code.
+        float expectedY   = levelIndex * -generator.LevelHeight;
+        float maxDist     = generator.LevelHeight * 0.5f;
+        Keypad[] allKeypads = FindObjectsOfType<Keypad>();
+        data.keypad = null;
+        float bestDist = float.MaxValue;
+        foreach (Keypad kp in allKeypads)
+        {
+            float dist = Mathf.Abs(kp.transform.position.y - expectedY);
+            if (dist < bestDist) { bestDist = dist; data.keypad = kp; }
+        }
+
+        // Reject the match if it is too far away — this level has no keypad of its own
+        if (bestDist > maxDist) data.keypad = null;
+
         if (data.keypad != null)
         {
             data.keypad.SetCode(combinedCode);
             data.keypad.SetCodesCollected(false);
+            Debug.Log($"[CodeNumberManager] Level {levelIndex}: keypad at Y={data.keypad.transform.position.y:F1} (expected {expectedY:F1}), code={combinedCode}.");
         }
         else
         {
-            Debug.LogWarning("[CodeNumberManager] No Keypad found in scene.");
+            Debug.Log($"[CodeNumberManager] Level {levelIndex}: no keypad within {maxDist:F1} units of Y={expectedY:F1} — level has no exit keypad.");
         }
 
         // Find all valid, reachable tile positions.

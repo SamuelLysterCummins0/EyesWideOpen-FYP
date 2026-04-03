@@ -112,6 +112,13 @@ public class CodeNumber : MonoBehaviour
     private void Update()
     {
         if (isCollected) return;
+
+        if (PowerManager.Instance != null && PowerManager.Instance.IsOutageLevelPoweredOff)
+        {
+            ResetGaze();
+            return;
+        }
+
         if (gazeDetector == null || !gazeDetector.IsTracking)
         {
             ResetGaze();

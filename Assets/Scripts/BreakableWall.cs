@@ -101,6 +101,12 @@ public class BreakableWall : MonoBehaviour
     {
         if (isBroken) return;
 
+        if (PowerManager.Instance != null && PowerManager.Instance.IsOutageLevelPoweredOff)
+        {
+            SetPromptVisible(false);
+            return;
+        }
+
         bool gogglesOn = GoggleController.Instance != null && GoggleController.Instance.IsActive;
 
         if (!gogglesOn)

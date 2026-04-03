@@ -132,6 +132,12 @@ public class ComputerInteraction : MonoBehaviour
 
     private void CheckGazeInteraction()
     {
+        if (PowerManager.Instance != null && PowerManager.Instance.IsOutageLevelPoweredOff)
+        {
+            ResetGazeState();
+            return;
+        }
+
         if (gazeDetector == null || !gazeDetector.IsTracking)
         {
             ResetGazeState();

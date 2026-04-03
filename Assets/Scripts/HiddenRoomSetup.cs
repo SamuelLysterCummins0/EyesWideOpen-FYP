@@ -48,6 +48,8 @@ public class HiddenRoomSetup : MonoBehaviour
     public float powerboxWallOffset = 0.12f;
     [Tooltip("Raycast distance used to find the wall surface for powerbox placement.")]
     public float powerboxWallRaycast = 2.5f;
+    [Tooltip("Extra Y-axis rotation applied after the powerbox faces into the room. Set to 180 if the front face points toward the wall instead.")]
+    public float powerboxRotationOffset = 0f;
 
     [Header("Settings")]
     [Tooltip("World-space distance from spawn point — tiles closer than this cannot be the hidden room.")]
@@ -134,12 +136,12 @@ public class HiddenRoomSetup : MonoBehaviour
         }
         else
         {
-            powerboxTile = FindPowerboxTile(gen, hiddenPos, spawnRef, tileSize);
+            powerboxTile = FindPowerboxTile(gen, reachable, hiddenPos, spawnRef, tileSize);
             Debug.Log($"[HiddenRoomSetup] L{levelIndex}: powerbox tile = {powerboxTile}");
 
             if (powerboxTile.x >= 0)
             {
-                SpawnPowerbox(gen, powerboxTile, levelParent, tileSize, levelIndex, levelY);
+                SpawnPowerbox(gen, powerboxTile, levelParent, tileSize, levelIndex);
 
                 if (PowerManager.Instance == null)
                     Debug.LogError("[HiddenRoomSetup] PowerManager.Instance is NULL — add a PowerManager component to a GameObject in the scene!");
@@ -365,11 +367,13 @@ public class HiddenRoomSetup : MonoBehaviour
     // ── Powerbox ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Finds a perimeter-adjacent, non-corner room tile for the powerbox.
-    /// Mirrors ComputerRoomSetup.FindComputerRoomTile but with simpler requirements.
+    /// Finds a perimeter-adjacent, non-corner room tile for the powerbox where a
+    /// raycast confirms actual wall geometry exists on the outer face.
+    /// Uses the reachable tile list so only tiles with real geometry are candidates.
     /// </summary>
     private Vector2Int FindPowerboxTile(
         ProceduralDungeonGenerator gen,
+        List<Vector2Int> reachable,
         Vector2Int hiddenPos,
         Vector3 spawnRef,
         float tileSize)
@@ -377,19 +381,16 @@ public class HiddenRoomSetup : MonoBehaviour
         int w = gen.DungeonWidth;
         int h = gen.DungeonHeight;
 
-        // Collect all perimeter-adjacent candidates (one step inward from each edge),
-        // excluding the four corners (x=1&&z=1, etc.) which can cause placement issues.
+        // Filter reachable list to perimeter-adjacent non-corner tiles
         List<Vector2Int> candidates = new List<Vector2Int>();
-
-        for (int x = 2; x < w - 2; x++)
+        foreach (Vector2Int pos in reachable)
         {
-            candidates.Add(new Vector2Int(x, 1));
-            candidates.Add(new Vector2Int(x, h - 2));
-        }
-        for (int z = 2; z < h - 2; z++)
-        {
-            candidates.Add(new Vector2Int(1,     z));
-            candidates.Add(new Vector2Int(w - 2, z));
+            bool isPerimeterAdjacent = pos.x == 1 || pos.x == w - 2 || pos.y == 1 || pos.y == h - 2;
+            if (!isPerimeterAdjacent) continue;
+            // Exclude corners
+            bool isCorner = (pos.x == 1 || pos.x == w - 2) && (pos.y == 1 || pos.y == h - 2);
+            if (isCorner) continue;
+            candidates.Add(pos);
         }
 
         ShuffleList(candidates);
@@ -399,102 +400,68 @@ public class HiddenRoomSetup : MonoBehaviour
             if (pos == hiddenPos) continue;
 
             ProceduralDungeonGenerator.TileConfig cfg = gen.GetTileConfig(pos.x, pos.y);
-            if (cfg == null || !cfg.IsRoomTile()) continue;
+            GameObject tile = gen.GetPlacedTile(pos.x, pos.y);
+            if (cfg == null || tile == null || !cfg.IsRoomTile()) continue;
 
-            // Need an outer Wall edge to mount the powerbox on
-            string outer = GetOuterDirection(pos, w, h);
-            bool outerIsWall =
-                (outer == "north" && cfg.north == ProceduralDungeonGenerator.EdgeType.Wall) ||
-                (outer == "south" && cfg.south == ProceduralDungeonGenerator.EdgeType.Wall) ||
-                (outer == "east"  && cfg.east  == ProceduralDungeonGenerator.EdgeType.Wall) ||
-                (outer == "west"  && cfg.west  == ProceduralDungeonGenerator.EdgeType.Wall);
-            if (!outerIsWall) continue;
-
-            // Must be reachable and not too close to spawn
+            // Must be far enough from spawn
             Vector3 world = new Vector3(pos.x * tileSize, 0f, pos.y * tileSize);
             if (Vector3.Distance(world, spawnRef) < minGoggleSpawnDistance) continue;
 
-            return pos;
+            // Confirm actual wall geometry exists via raycast on the outer face
+            string outer  = GetOuterDirection(pos, w, h);
+            Vector3 rayDir = outer == "north" ? Vector3.forward  :
+                             outer == "south" ? Vector3.back     :
+                             outer == "east"  ? Vector3.right    : Vector3.left;
+
+            ProceduralDungeonGenerator.EdgeType outerEdge =
+                outer == "north" ? cfg.north :
+                outer == "south" ? cfg.south :
+                outer == "east"  ? cfg.east  : cfg.west;
+
+            if (outerEdge != ProceduralDungeonGenerator.EdgeType.Wall) continue;
+
+            Vector3 rayOrigin = tile.transform.position + Vector3.up * 1.2f;
+            if (Physics.Raycast(rayOrigin, rayDir, powerboxWallRaycast))
+                return pos; // confirmed wall geometry
         }
 
         return new Vector2Int(-1, -1);
     }
 
     /// <summary>
-    /// Places the powerbox against the outer perimeter wall of a tile,
-    /// using the same ray-to-wall-surface logic as CodeNumberManager.
+    /// Places the powerbox against the confirmed outer wall of the tile.
+    /// Only uses the raycast hit point — no fallback — so it's always flush with geometry.
     /// </summary>
     private void SpawnPowerbox(
         ProceduralDungeonGenerator gen,
         Vector2Int pos,
         GameObject parent,
         float tileSize,
-        int levelIndex,
-        float levelY)
+        int levelIndex)
     {
         ProceduralDungeonGenerator.TileConfig cfg = gen.GetTileConfig(pos.x, pos.y);
         GameObject tile = gen.GetPlacedTile(pos.x, pos.y);
         if (cfg == null || tile == null) return;
 
-        int w = gen.DungeonWidth;
-        int h = gen.DungeonHeight;
+        int    w        = gen.DungeonWidth;
+        int    h        = gen.DungeonHeight;
         string outerDir = GetOuterDirection(pos, w, h);
-        float halfSize = tileSize * 0.5f;
 
-        // Determine the wall face vectors (outer wall preferred, same as SpawnComputer)
-        (Vector3 offset, Vector3 inward, string dir)[] faces =
-        {
-            (Vector3.forward * halfSize, Vector3.back,    "north"),
-            (Vector3.back    * halfSize, Vector3.forward, "south"),
-            (Vector3.right   * halfSize, Vector3.left,    "east"),
-            (Vector3.left    * halfSize, Vector3.right,   "west"),
-        };
+        Vector3 rayDir   = outerDir == "north" ? Vector3.forward  :
+                           outerDir == "south" ? Vector3.back     :
+                           outerDir == "east"  ? Vector3.right    : Vector3.left;
+        Vector3 inward   = -rayDir;
 
-        Vector3 chosenOffset = Vector3.zero;
-        Vector3 chosenInward = Vector3.forward;
-        bool    found        = false;
+        Vector3 rayOrigin = tile.transform.position + Vector3.up * 1.2f;
 
-        // Pass 0: outer wall only. Pass 1: any wall face.
-        for (int pass = 0; pass < 2 && !found; pass++)
-        {
-            foreach (var (offset, inward, dir) in faces)
-            {
-                ProceduralDungeonGenerator.EdgeType edge =
-                    dir == "north" ? cfg.north :
-                    dir == "south" ? cfg.south :
-                    dir == "east"  ? cfg.east  : cfg.west;
+        if (!Physics.Raycast(rayOrigin, rayDir, out RaycastHit hit, powerboxWallRaycast))
+            return; // geometry moved or wasn't there — skip rather than float in open space
 
-                if (edge != ProceduralDungeonGenerator.EdgeType.Wall) continue;
-                bool isOuter = (dir == outerDir);
-                if (pass == 0 && !isOuter) continue;
-                if (pass == 1 &&  isOuter) continue;
+        Vector3 spawnPos = hit.point + inward * powerboxWallOffset;
+        spawnPos.y = tile.transform.position.y;
 
-                chosenOffset = offset;
-                chosenInward = inward;
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) return;
-
-        Vector3 tilePos   = tile.transform.position;
-        Vector3 rayOrigin = tilePos + Vector3.up * 1.2f; // slightly below eye-height
-        Vector3 spawnPos;
-
-        if (Physics.Raycast(rayOrigin, chosenOffset.normalized, out RaycastHit hit, powerboxWallRaycast))
-        {
-            spawnPos   = hit.point + chosenInward * powerboxWallOffset;
-            spawnPos.y = tilePos.y;
-        }
-        else
-        {
-            spawnPos   = tilePos + chosenOffset + chosenInward * powerboxWallOffset;
-            spawnPos.y = tilePos.y;
-        }
-
-        // Face the powerbox into the room (same orientation as the computer)
-        Quaternion rotation = Quaternion.LookRotation(chosenInward, Vector3.up);
+        Quaternion rotation = Quaternion.LookRotation(inward, Vector3.up)
+                              * Quaternion.Euler(0f, powerboxRotationOffset, 0f);
 
         GameObject pb = Instantiate(powerboxPrefab, spawnPos, rotation, parent.transform);
         pb.name = $"Powerbox_L{levelIndex}";

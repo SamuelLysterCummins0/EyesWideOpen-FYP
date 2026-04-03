@@ -47,13 +47,16 @@ public class PowerboxInteraction : MonoBehaviour
         playerCamera  = Camera.main;
 
         if (sparkParticles == null)
-            Debug.LogWarning($"[Powerbox] {name} has no Spark Particles assigned — assign one in the Inspector!");
+            sparkParticles = GetComponentInChildren<ParticleSystem>();
+
+        if (sparkParticles == null)
+            Debug.LogWarning($"[Powerbox] {name} has no Spark Particles assigned and none found in children!");
         else
         {
             // Force-stop in case Play On Awake is checked, then start so electricity is
             // already sparking when the player arrives on this level.
             sparkParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-            sparkParticles.Play();
+            sparkParticles.Play(true);
         }
 
         BuildPromptUI();

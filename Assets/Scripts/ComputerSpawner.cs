@@ -101,6 +101,15 @@ public class ComputerSpawner : MonoBehaviour
         GameObject obj = Instantiate(computerPrefab, position, rotation);
         obj.name = $"ComputerTerminal_L{levelIndex}";
 
+        // Tell the ComputerInteraction which level this terminal belongs to so the
+        // MazeMinigame reports the correct digit slot to CodeNumberManager.
+        ComputerInteraction ci = obj.GetComponentInChildren<ComputerInteraction>(true);
+        if (ci == null) ci = obj.GetComponent<ComputerInteraction>();
+        if (ci != null)
+            ci.levelIndex = levelIndex;
+        else
+            Debug.LogError($"[ComputerSpawner] ComputerInteraction not found on '{obj.name}' — digit slot will default to level 0!");
+
         spawnedComputers[levelIndex] = obj;
     }
 

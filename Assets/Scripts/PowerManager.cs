@@ -30,12 +30,24 @@ public class PowerManager : MonoBehaviour
     [SerializeField] private float restoreDuration = 1.5f;
 
     [Header("Roof Emissive")]
-    [Tooltip("The shared material used by roof tiles. Its _EmissionColor will be zeroed on outage and restored on power-on.")]
+    [Tooltip("The shared material used by roof tiles. Its _EmissionColor will be scaled on outage and restored on power-on.")]
     [SerializeField] private Material roofMaterial;
+    [Tooltip("Emissive multiplier when power is off. 0 = completely off, 0.1 = 10% brightness.")]
+    [SerializeField] [Range(0f, 1f)] private float darknessEmissiveMultiplier = 0f;
 
     // ── State ─────────────────────────────────────────────────────────────────
     private bool isPowerOn = true;
     public  bool IsPowerOn => isPowerOn;
+
+    /// <summary>
+    /// True only when the player is currently on the outage level AND power is still off.
+    /// Use this for interaction guards — prevents blocking other levels.
+    /// </summary>
+    public bool IsOutageLevelPoweredOff =>
+        !isPowerOn &&
+        outageLevel >= 0 &&
+        GameManager.Instance != null &&
+        GameManager.Instance.GetCurrentLevel() == outageLevel;
 
     private int        outageLevel  = -1;
     private GameObject outageParent;     // Level_N parent — used to scope renderer search
@@ -45,9 +57,9 @@ public class PowerManager : MonoBehaviour
     private ColorAdjustments colorAdj;
 
     // ── Emissive ──────────────────────────────────────────────────────────────
-    private readonly List<Renderer> roofRenderers = new List<Renderer>();
-    private Color                   originalEmissive;
-    private MaterialPropertyBlock   mpb;
+    // Per-renderer instance materials + original colors — more reliable than MPB with URP emission
+    private readonly List<Material> roofMaterialInstances = new List<Material>();
+    private readonly List<Color>    roofOriginalColors    = new List<Color>();
 
     private Coroutine restoreCoroutine;
 
@@ -57,11 +69,6 @@ public class PowerManager : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-        mpb = new MaterialPropertyBlock();
-
-        // Cache original emissive from the material asset (before any runtime changes)
-        if (roofMaterial != null && roofMaterial.HasProperty("_EmissionColor"))
-            originalEmissive = roofMaterial.GetColor("_EmissionColor");
     }
 
     private void OnDestroy()
@@ -82,9 +89,8 @@ public class PowerManager : MonoBehaviour
         outageParent = levelParent;
         isPowerOn    = false;
 
-        // Re-cache original emissive in case the material was late-assigned
-        if (roofMaterial != null && roofMaterial.HasProperty("_EmissionColor"))
-            originalEmissive = roofMaterial.GetColor("_EmissionColor");
+        // Instance materials are built lazily in CacheRoofRenderers when the player
+        // first enters the level, so nothing to do here yet.
     }
 
     /// <summary>
@@ -108,11 +114,9 @@ public class PowerManager : MonoBehaviour
         EnsureVolumeBuilt();
         darknessVolume.gameObject.SetActive(true);
         colorAdj.postExposure.value = darkPostExposure;
-        ApplyEmissive(Color.black);
-
         // Cache renderers now that the level is fully generated
         CacheRoofRenderers();
-        ApplyEmissive(Color.black);
+        ApplyEmissive(darknessEmissiveMultiplier);
 
         CodeNumberHUD hud = FindObjectOfType<CodeNumberHUD>(true);
         if (hud != null) hud.ShowPowerMessage();
@@ -153,12 +157,12 @@ public class PowerManager : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / restoreDuration);
             colorAdj.postExposure.value = Mathf.Lerp(startExp, 0f, t);
-            ApplyEmissive(Color.Lerp(Color.black, originalEmissive, t));
+            ApplyEmissive(Mathf.Lerp(darknessEmissiveMultiplier, 1f, t));
             yield return null;
         }
 
         colorAdj.postExposure.value = 0f;
-        ApplyEmissive(originalEmissive);
+        ApplyEmissive(1f);
         darknessVolume.gameObject.SetActive(false);
     }
 
@@ -186,37 +190,57 @@ public class PowerManager : MonoBehaviour
         go.SetActive(false);
     }
 
-    // ── Emissive (MaterialPropertyBlock — non-destructive, doesn't modify the asset) ──
+    // ── Emissive ──────────────────────────────────────────────────────────────
+    // Uses renderer.material (instance materials) so _EmissionColor is set directly
+    // on each renderer's own copy — more reliable than MPB with URP emission.
 
-    private void ApplyEmissive(Color emissiveColor)
+    private void ApplyEmissive(float multiplier)
     {
-        if (roofMaterial == null) return;
-
-        foreach (Renderer r in roofRenderers)
+        for (int i = 0; i < roofMaterialInstances.Count; i++)
         {
-            if (r == null) continue;
-            r.GetPropertyBlock(mpb);
-            mpb.SetColor("_EmissionColor", emissiveColor);
-            r.SetPropertyBlock(mpb);
+            Material m = roofMaterialInstances[i];
+            if (m == null) continue;
+            m.SetColor("_EmissionColor", roofOriginalColors[i] * multiplier);
         }
     }
 
     private void CacheRoofRenderers()
     {
-        roofRenderers.Clear();
-        if (roofMaterial == null) return;
+        roofMaterialInstances.Clear();
+        roofOriginalColors.Clear();
 
-        // Search only within the outage level's parent to avoid touching other levels
+        if (roofMaterial == null)
+        {
+            Debug.LogWarning("[PowerManager] roofMaterial is not assigned — emissive will not change.");
+            return;
+        }
+
         Renderer[] candidates = outageParent != null
             ? outageParent.GetComponentsInChildren<Renderer>()
             : FindObjectsOfType<Renderer>();
 
+        string matName = roofMaterial.name;
         foreach (Renderer r in candidates)
         {
-            foreach (Material mat in r.sharedMaterials)
+            // renderer.materials returns per-instance copies — we can modify them freely
+            Material[] mats = r.materials;
+            bool found = false;
+            for (int i = 0; i < mats.Length; i++)
             {
-                if (mat == roofMaterial) { roofRenderers.Add(r); break; }
+                if (mats[i] != null && mats[i].name.StartsWith(matName))
+                {
+                    // Ensure emission keyword is on so colour changes are visible
+                    mats[i].EnableKeyword("_EMISSION");
+                    roofMaterialInstances.Add(mats[i]);
+                    roofOriginalColors.Add(mats[i].GetColor("_EmissionColor"));
+                    found = true;
+                    break;
+                }
             }
+            // Write back the modified array so Unity registers the instance
+            if (found) r.materials = mats;
         }
+
+        Debug.Log($"[PowerManager] CacheRoofRenderers: found {roofMaterialInstances.Count} roof material instances.");
     }
 }
