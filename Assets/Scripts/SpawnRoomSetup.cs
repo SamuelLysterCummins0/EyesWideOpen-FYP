@@ -42,7 +42,8 @@ public class SpawnRoomSetup : MonoBehaviour
 
     public bool HasSpawnPoint(int levelIndex) => spawnPoints.ContainsKey(levelIndex);
 
-    public void SetupLevel(ProceduralDungeonGenerator gen, int levelIndex, GameObject levelParent)
+    public void SetupLevel(ProceduralDungeonGenerator gen, int levelIndex, GameObject levelParent,
+                           int connStartX = 0, int connStartZ = 0)
     {
         List<Vector2Int> stairsPosList = gen.StairsPositions;
 
@@ -79,7 +80,7 @@ public class SpawnRoomSetup : MonoBehaviour
         // Level 0: find a dedicated perimeter spawn room far from the stairs.
         Vector2Int entranceTile = hasStairs ? GetStepInward(stairsPos, w, h) : new Vector2Int(-1, -1);
 
-        Vector2Int spawnPos = FindSpawnRoomTile(gen, stairsPos, entranceTile, hasStairs, w, h);
+        Vector2Int spawnPos = FindSpawnRoomTile(gen, stairsPos, entranceTile, hasStairs, w, h, connStartX, connStartZ);
 
         if (spawnPos.x < 0)
         {
@@ -97,12 +98,50 @@ public class SpawnRoomSetup : MonoBehaviour
         // The direction back toward that edge is the "outer" face — skip it for door placement.
         string outerDir = GetOuterDirection(spawnPos, w, h);
 
-        TryPlaceDoor(cfg.north, doorNorth, tileCenter, new Vector3(0, 0,  tileSize * 0.5f), levelParent, outerDir == "north");
-        TryPlaceDoor(cfg.east,  doorEast,  tileCenter, new Vector3( tileSize * 0.5f, 0, 0), levelParent, outerDir == "east");
-        TryPlaceDoor(cfg.south, doorSouth, tileCenter, new Vector3(0, 0, -tileSize * 0.5f), levelParent, outerDir == "south");
-        TryPlaceDoor(cfg.west,  doorWest,  tileCenter, new Vector3(-tileSize * 0.5f, 0, 0), levelParent, outerDir == "west");
+        List<SafeRoomDoor> levelDoors = new List<SafeRoomDoor>();
+        TryPlaceDoor(cfg.north, doorNorth, tileCenter, new Vector3(0, 0,  tileSize * 0.5f), levelParent, spawnPos, gen, outerDir == "north", levelDoors);
+        TryPlaceDoor(cfg.east,  doorEast,  tileCenter, new Vector3( tileSize * 0.5f, 0, 0), levelParent, spawnPos, gen, outerDir == "east",  levelDoors);
+        TryPlaceDoor(cfg.south, doorSouth, tileCenter, new Vector3(0, 0, -tileSize * 0.5f), levelParent, spawnPos, gen, outerDir == "south", levelDoors);
+        TryPlaceDoor(cfg.west,  doorWest,  tileCenter, new Vector3(-tileSize * 0.5f, 0, 0), levelParent, spawnPos, gen, outerDir == "west",  levelDoors);
+
+        CreateRoomNPCShuffle(tileCenter, levelIndex, levelParent, levelDoors);
+
+        // Place the win trigger at the level 0 spawn room.
+        // WinTrigger.OnTriggerEnter checks DetonationManager.IsDetonationActive,
+        // so it only fires during an active detonation escape run.
+        if (levelIndex == 0)
+        {
+            SpawnWinTrigger(tileCenter, tileSize, levelParent);
+
+            // Also place a checkpoint trigger so that when the player drops from
+            // the intro room into the dungeon for the first time they see
+            // "Checkpoint saved" and their respawn point is locked to level 0.
+            // (Sub-levels already get this trigger via the levelIndex > 0 path above.)
+            SpawnCheckpointTrigger(tileCenter, 0, tileSize, levelParent);
+        }
 
         Debug.Log($"SpawnRoomSetup: Spawn room at ({spawnPos.x},{spawnPos.y}) for level {levelIndex}. Spawn point: {spawnPoints[levelIndex]}");
+    }
+
+    /// <summary>
+    /// Places an invisible WinTrigger volume at the level 0 spawn room tile centre.
+    /// The trigger volume matches the footprint of the tile so the player only needs
+    /// to walk back into their starting room to register a win.
+    /// </summary>
+    private void SpawnWinTrigger(Vector3 centre, float tileSize, GameObject levelParent)
+    {
+        GameObject triggerObj = new GameObject("WinTrigger_Level0");
+        triggerObj.transform.position = centre;
+        triggerObj.transform.SetParent(levelParent.transform, true);
+
+        BoxCollider col = triggerObj.AddComponent<BoxCollider>();
+        col.size      = new Vector3(tileSize * 0.8f, 3f, tileSize * 0.8f);
+        col.isTrigger = true;
+
+        triggerObj.AddComponent<WinTrigger>();
+        spawnedDoors.Add(triggerObj); // tracked for ClearAll() on dungeon regeneration
+
+        Debug.Log($"[SpawnRoomSetup] WinTrigger placed at level 0 spawn room ({centre}).");
     }
 
     // Scan candidates that are ONE STEP INWARD from each edge, ordered by preference:
@@ -114,10 +153,14 @@ public class SpawnRoomSetup : MonoBehaviour
     private Vector2Int FindSpawnRoomTile(
         ProceduralDungeonGenerator gen,
         Vector2Int stairsPos, Vector2Int entranceTile,
-        bool hasStairs, int w, int h)
+        bool hasStairs, int w, int h,
+        int connStartX, int connStartZ)
     {
         string stairsEdge = hasStairs ? GetOuterDirection(stairsPos, w, h) : "none";
         List<(Vector2Int pos, int priority)> candidates = new List<(Vector2Int, int)>();
+
+        // Build reachable set once so candidate filtering is O(1) per candidate.
+        HashSet<Vector2Int> reachableSet = new HashSet<Vector2Int>(gen.GetReachableTilePositions(connStartX, connStartZ));
 
         // Scan one step inward from each of the four edges.
         // Priority: 0 = opposite, 1 = adjacent, 2 = same as stairs
@@ -145,6 +188,9 @@ public class SpawnRoomSetup : MonoBehaviour
             ProceduralDungeonGenerator.TileConfig cfg = gen.GetTileConfig(pos.x, pos.y);
             if (cfg == null || !cfg.IsRoomTile()) continue;
 
+            // Must be reachable from the dungeon's connectivity anchor
+            if (!reachableSet.Contains(pos)) continue;
+
             // Must not be the staircase entrance tile
             if (hasStairs && pos == entranceTile) continue;
 
@@ -171,30 +217,55 @@ public class SpawnRoomSetup : MonoBehaviour
                             (pos.x == w - 2 && pos.y == h - 2);
             if (isCorner) continue;
 
-            // Must have at least one Open edge pointing inward with a real non-fill tile
-            // adjacent — ensures the spawn room actually connects into the dungeon.
-            bool hasValidInwardOpen = false;
+            // Require at least one inward Open edge whose neighbour is:
+            //   (a) a real placed tile (not fill),
+            //   (b) reachable from the dungeon connectivity anchor, and
+            //   (c) not a Left/Right partial-wall on its reciprocal face.
+            // Condition (b) prevents a room where every door opens onto a dead-end
+            // tile the player can never reach. It is fine for SOME doors to fail —
+            // only ALL doors failing (no valid exit at all) rejects the candidate.
+            bool hasAtLeastOneValidDoor = false;
             if (outerDir != "north" && cfg.north == ProceduralDungeonGenerator.EdgeType.Open)
             {
-                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(pos.x, pos.y + 1);
-                if (adj != null && adj.tileName != "Tiles_01_Fill") hasValidInwardOpen = true;
+                Vector2Int adjPos = new Vector2Int(pos.x, pos.y + 1);
+                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(adjPos.x, adjPos.y);
+                if (adj != null && adj.tileName != "Tiles_01_Fill"
+                    && reachableSet.Contains(adjPos)
+                    && adj.south != ProceduralDungeonGenerator.EdgeType.Left
+                    && adj.south != ProceduralDungeonGenerator.EdgeType.Right)
+                    hasAtLeastOneValidDoor = true;
             }
             if (outerDir != "south" && cfg.south == ProceduralDungeonGenerator.EdgeType.Open)
             {
-                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(pos.x, pos.y - 1);
-                if (adj != null && adj.tileName != "Tiles_01_Fill") hasValidInwardOpen = true;
+                Vector2Int adjPos = new Vector2Int(pos.x, pos.y - 1);
+                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(adjPos.x, adjPos.y);
+                if (adj != null && adj.tileName != "Tiles_01_Fill"
+                    && reachableSet.Contains(adjPos)
+                    && adj.north != ProceduralDungeonGenerator.EdgeType.Left
+                    && adj.north != ProceduralDungeonGenerator.EdgeType.Right)
+                    hasAtLeastOneValidDoor = true;
             }
             if (outerDir != "east" && cfg.east == ProceduralDungeonGenerator.EdgeType.Open)
             {
-                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(pos.x + 1, pos.y);
-                if (adj != null && adj.tileName != "Tiles_01_Fill") hasValidInwardOpen = true;
+                Vector2Int adjPos = new Vector2Int(pos.x + 1, pos.y);
+                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(adjPos.x, adjPos.y);
+                if (adj != null && adj.tileName != "Tiles_01_Fill"
+                    && reachableSet.Contains(adjPos)
+                    && adj.west != ProceduralDungeonGenerator.EdgeType.Left
+                    && adj.west != ProceduralDungeonGenerator.EdgeType.Right)
+                    hasAtLeastOneValidDoor = true;
             }
             if (outerDir != "west" && cfg.west == ProceduralDungeonGenerator.EdgeType.Open)
             {
-                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(pos.x - 1, pos.y);
-                if (adj != null && adj.tileName != "Tiles_01_Fill") hasValidInwardOpen = true;
+                Vector2Int adjPos = new Vector2Int(pos.x - 1, pos.y);
+                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(adjPos.x, adjPos.y);
+                if (adj != null && adj.tileName != "Tiles_01_Fill"
+                    && reachableSet.Contains(adjPos)
+                    && adj.east != ProceduralDungeonGenerator.EdgeType.Left
+                    && adj.east != ProceduralDungeonGenerator.EdgeType.Right)
+                    hasAtLeastOneValidDoor = true;
             }
-            if (!hasValidInwardOpen) continue;
+            if (!hasAtLeastOneValidDoor) continue;
 
             return pos;
         }
@@ -231,12 +302,35 @@ public class SpawnRoomSetup : MonoBehaviour
         Vector3 tileCenter,
         Vector3 offset,
         GameObject parent,
-        bool skip = false)
+        Vector2Int tileGridPos,
+        ProceduralDungeonGenerator gen,
+        bool skip = false,
+        List<SafeRoomDoor> doorList = null)
     {
         if (skip) return;
         // Only place doors at genuine wide-open junctions.
         // Skipping Center/Left/Right prevents misaligned doors against corridor openings.
         if (edge != ProceduralDungeonGenerator.EdgeType.Open) return;
+
+        // Verify a tile exists on the other side — prevents placing doors at the dungeon boundary.
+        int nx = tileGridPos.x + (offset.x > 0 ? 1 : offset.x < 0 ? -1 : 0);
+        int nz = tileGridPos.y + (offset.z > 0 ? 1 : offset.z < 0 ? -1 : 0);
+        ProceduralDungeonGenerator.TileConfig neighborCfg = gen.GetTileConfig(nx, nz);
+        if (neighborCfg == null) return;
+
+        // For non-Fill tiles the Wall config value maps to a real physical wall barrier,
+        // so only place a door when the neighbour's reciprocal edge is passable.
+        // Fill tiles are "open floor, no walls anywhere" (see CanWalkBetween) — their edge
+        // configs are meaningless, so we skip the reciprocal check for them.
+        if (neighborCfg.tileName != "Tiles_01_Fill")
+        {
+            ProceduralDungeonGenerator.EdgeType reciprocal =
+                offset.z > 0 ? neighborCfg.south :
+                offset.z < 0 ? neighborCfg.north :
+                offset.x > 0 ? neighborCfg.west  : neighborCfg.east;
+            if (reciprocal == ProceduralDungeonGenerator.EdgeType.Wall) return;
+        }
+
         if (prefab == null)
         {
             Debug.LogWarning("SpawnRoomSetup: Door prefab not assigned for an open side.");
@@ -247,6 +341,25 @@ public class SpawnRoomSetup : MonoBehaviour
         GameObject door = Instantiate(prefab, spawnPos, prefab.transform.rotation, parent.transform);
         door.name = $"SpawnRoomDoor_{parent.name}_{offset.normalized}";
         spawnedDoors.Add(door);
+
+        // Collect SafeRoomDoor reference so RoomNPCShuffle can query IsOpen.
+        SafeRoomDoor safeRoomDoor = door.GetComponent<SafeRoomDoor>();
+        if (safeRoomDoor != null && doorList != null)
+            doorList.Add(safeRoomDoor);
+    }
+
+    // Creates a RoomNPCShuffle component on a helper object parented to the level.
+    // Tracked in spawnedDoors so ClearAll() destroys it on dungeon regeneration.
+    private void CreateRoomNPCShuffle(Vector3 center, int levelIndex, GameObject parent, List<SafeRoomDoor> doors)
+    {
+        GameObject shuffleObj = new GameObject($"RoomNPCShuffle_Level{levelIndex}");
+        shuffleObj.transform.SetParent(parent.transform);
+        shuffleObj.transform.position = center;
+
+        RoomNPCShuffle shuffle = shuffleObj.AddComponent<RoomNPCShuffle>();
+        shuffle.Initialise(center, levelIndex, doors);
+
+        spawnedDoors.Add(shuffleObj);
     }
 
     // The inward-step candidate tiles sit one tile in from the edge,

@@ -128,6 +128,86 @@ public partial class ProceduralDungeonGenerator
                 return true;
         }
 
+        // Strategy 3: If a neighbour already has a passable edge toward the isolated tile,
+        // try replacing the isolated tile itself with one that opens back toward that neighbour.
+        // This handles the case where the isolated tile's OWN edge pattern is the blocker,
+        // rather than the neighbours' — the complement of what Strategy 2 does.
+        {
+            TileConfig currentCfg = placedConfigs[targetX, targetZ];
+            if (currentCfg != null)
+            {
+                string savedName = currentCfg.tileName;
+                Vector2Int[] dirs3 = {
+                    new Vector2Int(-1, 0), new Vector2Int(1, 0),
+                    new Vector2Int(0,  1), new Vector2Int(0, -1)
+                };
+
+                foreach (Vector2Int dir in dirs3)
+                {
+                    int nx = targetX + dir.x;
+                    int nz = targetZ + dir.y;
+                    if (!IsInBounds(nx, nz) || placedTiles[nx, nz] == null) continue;
+
+                    TileConfig nCfg = placedConfigs[nx, nz];
+                    if (nCfg == null) continue;
+
+                    // Is this neighbour's edge facing the isolated tile already passable?
+                    EdgeType neighborFacing =
+                        dir.x == -1 ? nCfg.east  :
+                        dir.x ==  1 ? nCfg.west  :
+                        dir.y ==  1 ? nCfg.south : nCfg.north;
+                    if (!IsPassableEdge(neighborFacing)) continue;
+
+                    // Remove isolated tile so IsCompatibleWithNeighbors tests the empty slot cleanly
+                    SafeDestroy(placedTiles[targetX, targetZ]);
+                    placedTiles[targetX, targetZ] = null;
+                    placedConfigs[targetX, targetZ] = null;
+
+                    List<GameObject> candidates = new List<GameObject>();
+                    foreach (GameObject prefab in allTilePrefabs)
+                    {
+                        if (prefab == null || !tileConfigs.ContainsKey(prefab.name)) continue;
+                        if (prefab.name.Contains("Stairs")) continue;
+                        TileConfig cfg = tileConfigs[prefab.name];
+                        if (!IsCompatibleWithNeighbors(targetX, targetZ, cfg, strict: false)) continue;
+
+                        // Candidate must have a passable edge on the side facing the open neighbour
+                        EdgeType cfgFacing =
+                            dir.x == -1 ? cfg.west  :
+                            dir.x ==  1 ? cfg.east  :
+                            dir.y ==  1 ? cfg.north : cfg.south;
+                        if (!IsPassableEdge(cfgFacing)) continue;
+
+                        candidates.Add(prefab);
+                    }
+
+                    if (candidates.Count > 0)
+                    {
+                        PlaceTile(targetX, targetZ, candidates[Random.Range(0, candidates.Count)], parent);
+                        List<Vector2Int> check = FindIsolatedTiles(startX, startZ);
+                        if (!check.Contains(new Vector2Int(targetX, targetZ)))
+                        {
+#if UNITY_EDITOR
+                            Debug.Log($"Repair S3: replaced isolated tile ({targetX},{targetZ}) — connected via open neighbour ({nx},{nz})");
+#endif
+                            return true;
+                        }
+                        // This candidate didn't fix isolation — undo it
+                        SafeDestroy(placedTiles[targetX, targetZ]);
+                        placedTiles[targetX, targetZ] = null;
+                        placedConfigs[targetX, targetZ] = null;
+                    }
+
+                    // Restore original tile before trying the next neighbour direction
+                    if (savedName != null)
+                    {
+                        GameObject pf = System.Array.Find(allTilePrefabs, p => p != null && p.name == savedName);
+                        if (pf != null) PlaceTile(targetX, targetZ, pf, parent);
+                    }
+                }
+            }
+        }
+
         // Strategy 2: Find which neighbors block passage and try replacing them
         Queue<Vector2Int> queue = new Queue<Vector2Int>();
         HashSet<Vector2Int> visited = new HashSet<Vector2Int>();
@@ -176,7 +256,9 @@ public partial class ProceduralDungeonGenerator
             placedTiles[bx, bz] = null;
             placedConfigs[bx, bz] = null;
 
-            if (TryPlaceCompatibleTile(bx, bz, parent))
+            bool placed = TryPlaceCompatibleTile(bx, bz, parent);
+
+            if (placed)
             {
                 List<Vector2Int> stillIsolated = FindIsolatedTiles(startX, startZ);
                 bool targetStillIsolated = stillIsolated.Contains(new Vector2Int(targetX, targetZ));
@@ -187,12 +269,15 @@ public partial class ProceduralDungeonGenerator
 #endif
                     return true;
                 }
-                SafeDestroy(placedTiles[bx, bz]);
             }
 
-            // Restore old tile
+            // Repair didn't help — destroy whatever TryPlaceCompatibleTile left behind
+            // (it places a tile even when returning false, which caused stacking).
+            SafeDestroy(placedTiles[bx, bz]);
             placedTiles[bx, bz] = null;
             placedConfigs[bx, bz] = null;
+
+            // Restore original tile
             if (oldPrefabName != null)
             {
                 GameObject prefab = System.Array.Find(allTilePrefabs, p => p != null && p.name == oldPrefabName);
@@ -208,16 +293,19 @@ public partial class ProceduralDungeonGenerator
     {
         int errorCount = 0;
 
-        // 1. Check all tiles are reachable
+        // 1. Isolated tiles:
+        //    - Below or at isolatedTileThreshold → harmless, left in place (removing creates floor gaps).
+        //    - Above isolatedTileThreshold → too many to ignore; count as a validation failure so
+        //      GenerateLevel retries the whole level (up to 5 attempts).
         List<Vector2Int> isolated = FindIsolatedTiles(startX, startZ);
-        if (isolated.Count > 0)
+        if (isolated.Count > isolatedTileThreshold)
         {
-            Debug.LogError($"✗ Level {levelIndex} validation FAILED: {isolated.Count} isolated tiles");
-            foreach (Vector2Int pos in isolated)
-            {
-                Debug.Log($"    - Isolated tile at ({pos.x},{pos.y})");
-            }
-            errorCount += isolated.Count;
+            Debug.LogError($"✗ Level {levelIndex}: {isolated.Count} isolated tiles exceed threshold ({isolatedTileThreshold}) — will retry generation");
+            errorCount++;
+        }
+        else if (isolated.Count > 0)
+        {
+            Debug.LogWarning($"  Level {levelIndex}: {isolated.Count} isolated tiles remain (within threshold, left in place)");
         }
 
         // 2. Check perimeter for walk-off points

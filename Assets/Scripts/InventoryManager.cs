@@ -15,6 +15,7 @@ public class InventoryManager : MonoBehaviour
     public KeyCode toggleKey = KeyCode.I; 
 
     private bool isInventoryOpen = false;
+    private bool inventoryLocked = false;
     public GameObject dropArea;
 
     public void Awake()
@@ -26,12 +27,23 @@ public class InventoryManager : MonoBehaviour
         }
     }
 
+    public void SetInventoryLocked(bool locked)
+    {
+        inventoryLocked = locked;
+        if (locked)
+        {
+            // Always hide the panel regardless of whether it was open —
+            // it may start active in the scene by default.
+            isInventoryOpen = false;
+            if (inventoryUI != null) inventoryUI.SetActive(false);
+        }
+    }
+
     void Update()
     {
+        if (inventoryLocked) return;
         if (Input.GetKeyDown(toggleKey))
-        {
             ToggleInventory();
-        }
     }
 
     public void ToggleInventory()

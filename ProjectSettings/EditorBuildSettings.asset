@@ -8,12 +8,15 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Objects and Items/3D Stylized Animated Dogs Kit/DemoScene/SampleScene.unity
     guid: 9fc0d4010bbf28b4594072e72b8655ab
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/!.unity
     guid: eead19e71c1349f42b75a3042fa53fd4
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Intro.unity
-    guid: 03cab8ae3ef80d64f95c4e9af0709184
+    guid: 41ec4cf225097a74ba31357e977fb6d6
+  - enabled: 1
+    path: Assets/Scenes/office building.unity
+    guid: cc855a45dc62bb8479a2ca85a707b08a
   - enabled: 1
     path: Assets/Scenes/Level.unity
     guid: f9d4914c7317d164b993a53a23353dd4

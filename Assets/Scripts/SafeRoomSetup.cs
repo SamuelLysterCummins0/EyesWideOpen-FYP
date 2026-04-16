@@ -67,11 +67,13 @@ public class SafeRoomSetup : MonoBehaviour
 
         string skipDir = GetStairsDirection(stairsPos, gen.DungeonWidth, gen.DungeonHeight);
 
-        TryPlaceDoor(cfg.north, doorNorth, tileCenter, new Vector3(0, 0,  tileSize * 0.5f), levelParent, skipDir == "north");
-        TryPlaceDoor(cfg.east,  doorEast,  tileCenter, new Vector3( tileSize * 0.5f, 0, 0), levelParent, skipDir == "east");
-        TryPlaceDoor(cfg.south, doorSouth, tileCenter, new Vector3(0, 0, -tileSize * 0.5f), levelParent, skipDir == "south");
-        TryPlaceDoor(cfg.west,  doorWest,  tileCenter, new Vector3(-tileSize * 0.5f, 0, 0), levelParent, skipDir == "west");
+        List<SafeRoomDoor> entranceDoors = new List<SafeRoomDoor>();
+        TryPlaceDoor(cfg.north, doorNorth, tileCenter, new Vector3(0, 0,  tileSize * 0.5f), levelParent, entrancePos, gen, skipDir == "north", entranceDoors);
+        TryPlaceDoor(cfg.east,  doorEast,  tileCenter, new Vector3( tileSize * 0.5f, 0, 0), levelParent, entrancePos, gen, skipDir == "east",  entranceDoors);
+        TryPlaceDoor(cfg.south, doorSouth, tileCenter, new Vector3(0, 0, -tileSize * 0.5f), levelParent, entrancePos, gen, skipDir == "south", entranceDoors);
+        TryPlaceDoor(cfg.west,  doorWest,  tileCenter, new Vector3(-tileSize * 0.5f, 0, 0), levelParent, entrancePos, gen, skipDir == "west",  entranceDoors);
 
+        CreateRoomNPCShuffle(tileCenter, levelIndex, levelParent, entranceDoors);
         Debug.Log($"SafeRoomSetup: Doors placed at ({entrancePos.x},{entrancePos.y}) level {levelIndex} (stairs at {stairsPos})");
     }
 
@@ -81,13 +83,36 @@ public class SafeRoomSetup : MonoBehaviour
         Vector3 tileCenter,
         Vector3 offset,
         GameObject parent,
-        bool skip = false)
+        Vector2Int tileGridPos,
+        ProceduralDungeonGenerator gen,
+        bool skip = false,
+        List<SafeRoomDoor> doorList = null)
     {
         // Skip the side that faces back toward the stairs — it already has its own entry.
         if (skip) return;
         // Only place doors at genuine wide-open junctions.
         // Skipping Center/Left/Right prevents misaligned doors against corridor openings.
         if (edge != ProceduralDungeonGenerator.EdgeType.Open) return;
+
+        // Verify a tile exists on the other side — prevents placing doors at the dungeon boundary.
+        int nx = tileGridPos.x + (offset.x > 0 ? 1 : offset.x < 0 ? -1 : 0);
+        int nz = tileGridPos.y + (offset.z > 0 ? 1 : offset.z < 0 ? -1 : 0);
+        ProceduralDungeonGenerator.TileConfig neighborCfg = gen.GetTileConfig(nx, nz);
+        if (neighborCfg == null) return;
+
+        // For non-Fill tiles the Wall config value maps to a real physical wall barrier,
+        // so only place a door when the neighbour's reciprocal edge is passable.
+        // Fill tiles are "open floor, no walls anywhere" (see CanWalkBetween) — their edge
+        // configs are meaningless, so we skip the reciprocal check for them.
+        if (neighborCfg.tileName != "Tiles_01_Fill")
+        {
+            ProceduralDungeonGenerator.EdgeType reciprocal =
+                offset.z > 0 ? neighborCfg.south :
+                offset.z < 0 ? neighborCfg.north :
+                offset.x > 0 ? neighborCfg.west  : neighborCfg.east;
+            if (reciprocal == ProceduralDungeonGenerator.EdgeType.Wall) return;
+        }
+
         if (prefab == null)
         {
             Debug.LogWarning("SafeRoomSetup: Door prefab not assigned for an open side.");
@@ -98,6 +123,25 @@ public class SafeRoomSetup : MonoBehaviour
         GameObject door = Instantiate(prefab, spawnPos, prefab.transform.rotation, parent.transform);
         door.name = $"SafeRoomDoor_{parent.name}_{offset.normalized}";
         spawnedDoors.Add(door);
+
+        // Collect SafeRoomDoor reference so RoomNPCShuffle can query IsOpen.
+        SafeRoomDoor safeRoomDoor = door.GetComponent<SafeRoomDoor>();
+        if (safeRoomDoor != null && doorList != null)
+            doorList.Add(safeRoomDoor);
+    }
+
+    // Creates a RoomNPCShuffle component on a helper object parented to the level.
+    // Tracked in spawnedDoors so ClearAll() destroys it on dungeon regeneration.
+    private void CreateRoomNPCShuffle(Vector3 center, int levelIndex, GameObject parent, List<SafeRoomDoor> doors)
+    {
+        GameObject shuffleObj = new GameObject($"RoomNPCShuffle_SafeRoom_Level{levelIndex}_{center}");
+        shuffleObj.transform.SetParent(parent.transform);
+        shuffleObj.transform.position = center;
+
+        RoomNPCShuffle shuffle = shuffleObj.AddComponent<RoomNPCShuffle>();
+        shuffle.Initialise(center, levelIndex, doors);
+
+        spawnedDoors.Add(shuffleObj);
     }
 
     // Returns which cardinal direction (as a string) faces back toward the stairs from the entrance tile.

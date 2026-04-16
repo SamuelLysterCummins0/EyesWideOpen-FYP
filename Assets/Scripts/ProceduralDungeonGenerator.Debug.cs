@@ -120,19 +120,12 @@ public partial class ProceduralDungeonGenerator
             Debug.LogError($"✗ FAILED - Found {errorCount} illegal placements!");
     }
 
-    // ── Debug grid print ──────────────────────────────────────────────────────
+    // ── Debug connectivity summary ────────────────────────────────────────────
     void PrintLevelDebug(int levelIndex, int connStartX, int connStartZ)
     {
-        if (!debugPrintLayout) return;
         if (placedTiles == null) return;
 
         HashSet<Vector2Int> reachable = FloodFillReachable(connStartX, connStartZ);
-
-        // Key positions
-        Vector2Int stairsOwn  = levelIndex   < stairsPositions.Count ? stairsPositions[levelIndex]     : new Vector2Int(-1,-1);
-        Vector2Int stairsPrev = levelIndex>0 && (levelIndex-1) < stairsPositions.Count ? stairsPositions[levelIndex-1] : new Vector2Int(-1,-1);
-        Vector2Int entrOwn    = stairsOwn.x  >= 0 ? DebugEntranceTile(stairsOwn)  : new Vector2Int(-1,-1);
-        Vector2Int entrPrev   = stairsPrev.x >= 0 ? DebugEntranceTile(stairsPrev) : new Vector2Int(-1,-1);
 
         int connCount = 0, isoCount = 0;
         var isoList = new List<Vector2Int>();
@@ -141,52 +134,26 @@ public partial class ProceduralDungeonGenerator
             {
                 if (placedTiles[x, z] == null) continue;
                 var cfg = placedConfigs[x, z];
-                bool fill = cfg != null && cfg.tileName == "Tiles_01_Fill";
-                if (fill) continue;
+                if (cfg != null && cfg.tileName == "Tiles_01_Fill") continue;
                 if (reachable.Contains(new Vector2Int(x, z))) connCount++;
                 else { isoCount++; isoList.Add(new Vector2Int(x, z)); }
             }
 
-        var sb = new StringBuilder();
-        sb.AppendLine($"\n══ LEVEL {levelIndex} LAYOUT  connStart:({connStartX},{connStartZ})  reachable:{connCount}  isolated:{isoCount} ══");
-
-        // Grid: Z counts down so north is at the top
-        for (int z = dungeonHeight - 1; z >= 0; z--)
+        if (isoCount == 0)
         {
-            sb.Append($"{z,2}│");
-            for (int x = 0; x < dungeonWidth; x++)
-            {
-                var pos = new Vector2Int(x, z);
-                char c;
-                if      (pos == new Vector2Int(connStartX, connStartZ)) c = '@';
-                else if (pos == stairsPrev)  c = '^'; // arrival stairs (from level above)
-                else if (pos == stairsOwn)   c = 'v'; // departure stairs (to level below)
-                else if (pos == entrPrev)    c = 'R'; // spawn-room / arrival safe-room entrance
-                else if (pos == entrOwn)     c = 'D'; // departure safe-room entrance
-                else if (placedTiles[x,z] == null) c = ' ';
-                else
-                {
-                    var cfg = placedConfigs[x, z];
-                    bool fill = cfg != null && cfg.tileName == "Tiles_01_Fill";
-                    bool iso  = cfg != null && !reachable.Contains(pos);
-                    c = fill ? 'f' : iso ? '!' : '.';
-                }
-                sb.Append(c);
-            }
-            sb.AppendLine($"│{z}");
+            Debug.Log($"[Layout] Level {levelIndex}  reachable:{connCount}  isolated:0  ✓");
         }
-
-        sb.AppendLine($"Legend: @=connStart  ^=arrivalStairs  v=deptStairs  R=spawnRoom  D=deptSafeRoom");
-        sb.AppendLine($"        .=connected  !=isolated  f=fill  ' '=empty");
-
-        if (isoList.Count > 0)
+        else
         {
-            sb.AppendLine($"\nIsolated tiles ({isoList.Count}):");
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"[Layout] Level {levelIndex}  reachable:{connCount}  isolated:{isoCount}");
             foreach (var p in isoList)
-                sb.AppendLine($"  !({p.x},{p.y}) {placedConfigs[p.x,p.y]?.tileName}  N:{placedConfigs[p.x,p.y]?.north} E:{placedConfigs[p.x,p.y]?.east} S:{placedConfigs[p.x,p.y]?.south} W:{placedConfigs[p.x,p.y]?.west}");
+            {
+                var cfg = placedConfigs[p.x, p.y];
+                sb.AppendLine($"  ! ({p.x},{p.y}) {cfg?.tileName}  N:{cfg?.north} E:{cfg?.east} S:{cfg?.south} W:{cfg?.west}");
+            }
+            Debug.LogWarning(sb.ToString());
         }
-
-        Debug.Log(sb.ToString());
     }
 
     void OnDrawGizmos()

@@ -48,13 +48,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
     [Header("Tile Prefabs")]
     public GameObject[] allTilePrefabs;
 
-    [Header("Decoration Prefabs")]
-    public GameObject wallPrefab;
-    public GameObject wall2mPrefab;
-    public GameObject wallDoorPrefab;
-    public GameObject doorSnapperPrefab;
-    public GameObject pillerPrefab;
-
     [Header("Generation Settings")]
     public int dungeonWidth = 12;
     public int dungeonHeight = 12;
@@ -64,9 +57,11 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
     [Header("Tile Preferences")]
     [Range(0f, 1f)] public float roomTileProbability = 0.65f;
 
-    [Header("Decoration Settings")]
-    [Range(0f, 1f)] public float pillarChance = 0.2f;
-    [Range(0f, 1f)] public float doorChance = 0.25f;
+    [Header("Repair Settings")]
+    [Tooltip("If more than this many tiles remain isolated after the standard repair passes, extra passes run — and if they still exceed the threshold after that, the level is regenerated.")]
+    public int isolatedTileThreshold = 10;
+    [Tooltip("How many times to retry generating a level before accepting the best available result. Higher values reduce the chance of exceeding the isolated tile threshold but increase generation time.")]
+    public int maxGenerationAttempts = 8;
 
     [Header("Debug")]
     public bool showDebugGizmos = true;
@@ -83,16 +78,66 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
     // Used by the deferred NavMesh coroutine — collects per-level data during tile placement
     // so the bake can happen one frame later, after Unity registers all MeshRenderers.
     private bool deferNavMesh = false;
-    private List<(GameObject parent, int index, TileConfig[,] configs)> pendingNavMeshLevels
-        = new List<(GameObject, int, TileConfig[,])>();
+    private List<(GameObject parent, int index, TileConfig[,] configs, int connStartX, int connStartZ)> pendingNavMeshLevels
+        = new List<(GameObject, int, TileConfig[,], int, int)>();
 
     private Dictionary<string, TileConfig> tileConfigs;
     private GameObject[,] placedTiles;
     private TileConfig[,] placedConfigs;
-    private List<GameObject> decorationObjects;
     private bool isRepairing = false; // Relaxes some placement rules during repair passes
+    private DungeonLevelVisibility levelVisibility; // Cached for level show/hide management
+
+    // Best-attempt tracking across retries — keeps whichever generation had the fewest isolated tiles
+    // so the final fallback is always the best we produced, not just the last.
+    private int         bestAttemptIsolatedCount;
+    private GameObject  bestAttemptLevelParent;
+    private GameObject[,] bestAttemptPlacedTiles;
+    private TileConfig[,]  bestAttemptPlacedConfigs;
     private List<Vector2Int> stairsPositions = new List<Vector2Int>(); // Track where stairs were placed
     private Dictionary<int, TileConfig[,]> allLevelConfigs = new Dictionary<int, TileConfig[,]>();
+    // Reachable tile sets per level — used by DungeonNavMeshSetup to filter spawn zones.
+    private Dictionary<int, HashSet<Vector2Int>> allLevelReachable = new Dictionary<int, HashSet<Vector2Int>>();
+    public HashSet<Vector2Int> GetLevelReachable(int levelIndex)
+        => allLevelReachable.TryGetValue(levelIndex, out var set) ? set : new HashSet<Vector2Int>();
+
+    /// <summary>
+    /// Removes a tile from the dungeon grid and destroys its GameObject.
+    /// Called by DetonationRoomSetup so the 2×2 block it occupies is excluded from
+    /// code-number, locker, and battery placement (all of which skip null configs).
+    /// </summary>
+    public void RemoveTile(int x, int z)
+    {
+        if (!IsInBounds(x, z)) return;
+        SafeDestroy(placedTiles[x, z]);
+        placedTiles[x, z]  = null;
+        placedConfigs[x, z] = null;
+    }
+
+    /// <summary>
+    /// Places a Tiles_01_Fill tile at the given grid position.
+    /// Called by DetonationRoomSetup after clearing the inward approach tiles so the
+    /// player has solid, wall-free floor to walk on right up to the door opening.
+    /// Fill tiles are always passable (CanWalkBetween treats them as open floor) so
+    /// the flood-fill reachability traversal runs straight through them.
+    /// </summary>
+    public void PlaceFillTileAt(int x, int z, GameObject parent)
+    {
+        if (!IsInBounds(x, z)) return;
+
+        GameObject fillPrefab = System.Array.Find(
+            allTilePrefabs, p => p != null && p.name == "Tiles_01_Fill");
+
+        if (fillPrefab == null)
+        {
+            Debug.LogWarning("[ProceduralDungeonGenerator] Tiles_01_Fill prefab not found " +
+                             "in allTilePrefabs — cannot place fill tile for detonation room.");
+            return;
+        }
+
+        // Remove whatever is there first (RemoveTile already guards IsInBounds)
+        RemoveTile(x, z);
+        PlaceTile(x, z, fillPrefab, parent);
+    }
 
     void SafeDestroy(Object obj)
     {
@@ -110,7 +155,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
     {
         tileConfigs = new Dictionary<string, TileConfig>();
         TileConfigData.Populate(tileConfigs);
-        Debug.Log($"Initialized {tileConfigs.Count} tile configurations");
     }
 
     [ContextMenu("Generate Dungeon")]
@@ -122,6 +166,9 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             Debug.LogError("No tile prefabs assigned!");
             return;
         }
+
+        // Cache visibility manager (on same GO — safe to do here before generation starts)
+        levelVisibility = GetComponent<DungeonLevelVisibility>();
 
         ClearDungeon();
         levelParents.Clear();
@@ -141,6 +188,9 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             deferNavMesh = false;
             for (int level = 0; level < numberOfLevels; level++)
                 GenerateLevel(level);
+
+            // Hide all levels except level 0 and plant stairway visibility triggers.
+            levelVisibility?.InitialHide(levelHeight, dungeonWidth, stairsPositions, levelParents, tileSize);
         }
     }
 
@@ -161,9 +211,19 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         {
             foreach (var entry in pendingNavMeshLevels)
                 navSetup.SetupLevel(entry.parent, entry.index, entry.configs,
-                                    dungeonWidth, dungeonHeight, tileSize, levelHeight);
+                                    dungeonWidth, dungeonHeight, tileSize, levelHeight,
+                                    entry.connStartX, entry.connStartZ);
         }
         pendingNavMeshLevels.Clear();
+
+        // Hide all levels except level 0 and plant stairway visibility triggers.
+        levelVisibility?.InitialHide(levelHeight, dungeonWidth, stairsPositions, levelParents, tileSize);
+
+        // Position the intro room prefab above the level 0 spawn room.
+        SpawnRoomSetup introSpawnRef = FindObjectOfType<SpawnRoomSetup>();
+        IntroRoomSetup introRoom = FindObjectOfType<IntroRoomSetup>();
+        if (introRoom != null && introSpawnRef != null)
+            introRoom.PlaceIntroRoom(introSpawnRef);
 
         // Move the player into level 0's spawn room now that generation and NavMesh are ready
         if (GameManager.Instance != null)
@@ -172,18 +232,21 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
 
     void GenerateLevel(int levelIndex, int attemptNumber = 1)
     {
-        Debug.Log($"=== Generating Level {levelIndex} (Attempt {attemptNumber}) ===");
+        // GenerateLevel start — no log needed, PrintLevelDebug summarises the result
 
-        // Create parent for this level
+        // Create parent for this level.
+        // Use indexed assignment so retries never grow the list — levelParents[levelIndex]
+        // always holds the CURRENT attempt's parent, never a stale entry from a previous try.
         GameObject levelParent = new GameObject($"Level_{levelIndex}");
         levelParent.transform.parent = transform;
         levelParent.transform.position = new Vector3(0, levelIndex * -levelHeight, 0);
-        levelParents.Add(levelParent);
+        while (levelParents.Count <= levelIndex)
+            levelParents.Add(null);
+        levelParents[levelIndex] = levelParent;
 
         // Reset arrays for this level
         placedTiles = new GameObject[dungeonWidth, dungeonHeight];
         placedConfigs = new TileConfig[dungeonWidth, dungeonHeight];
-        if (decorationObjects == null) decorationObjects = new List<GameObject>();
 
         // Determine starting position for this level
         int startX, startZ;
@@ -193,7 +256,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             Vector2Int landingPos = stairsPositions[levelIndex - 1];
             startX = landingPos.x;
             startZ = landingPos.y;
-            Debug.Log($"Level {levelIndex}: Starting generation at stairs landing position ({startX},{startZ})");
         }
         else
         {
@@ -218,14 +280,15 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             else if (startZ == 0) pathDir = new Vector2Int(0, 1); // South edge - go North
             else if (startZ == dungeonHeight - 1) pathDir = new Vector2Int(0, -1); // North edge - go South
 
-            // Force-place 3 tiles leading inward from stairs.
-            // i=0 (perimeter/stairs position): room tile whose INWARD edge (pathDir direction)
-            //     is Open — this clears the wall at the bottom of the stairway exit.
+            // Force-place 5 tiles leading inward from stairs.
+            // i=0 (perimeter/stairs position): already occupied by the stairway prefab from
+            //     the level above — just mark visited so BFS never overwrites it.
             // i=1 (safe room entrance): requires Open toward stairs (so the player can walk in)
             //     AND forward Open toward dungeon (so BFS connects through, not into a pocket).
-            // i=2 (first dungeon tile past safe room): TryPlaceCompatibleTile ensures its
-            //     face toward i=1 matches, so opening a door doesn't reveal a wall.
-            for (int i = 0; i < 3; i++)
+            // i=2..4 (corridor into dungeon): TryPlaceCompatibleTile ensures edge matching.
+            //     Extending to 5 pushes the BFS frontier away from the constrained perimeter
+            //     edge, preventing the frontier from dying in a small corner pocket.
+            for (int i = 0; i < 5; i++)
             {
                 int px = startX + (pathDir.x * i);
                 int pz = startZ + (pathDir.y * i);
@@ -256,7 +319,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 }
             }
 
-            Debug.Log($"Level {levelIndex}: Forced entrance path from edge in direction {pathDir}");
         }
         else
         {
@@ -310,8 +372,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         int connStartZ = (levelIndex > 0 && pathDir != Vector2Int.zero)
             ? startZ + pathDir.y : startZ;
 
-        // Run connectivity validation and repair with multiple passes
-        Debug.Log($"Level {levelIndex}: Running connectivity validation (connStart:{connStartX},{connStartZ})...");
         List<Vector2Int> isolated = FindIsolatedTiles(connStartX, connStartZ);
 
         int repairPass = 0;
@@ -321,8 +381,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         while (isolated.Count > 0 && repairPass < maxRepairPasses)
         {
             repairPass++;
-            Debug.LogWarning($"Level {levelIndex}: Repair pass {repairPass} - Found {isolated.Count} isolated tiles");
-
             int repaired = 0;
             foreach (Vector2Int isoPos in isolated)
             {
@@ -332,61 +390,130 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 }
             }
 
-            Debug.Log($"Level {levelIndex}: Pass {repairPass} repaired {repaired}/{isolated.Count} tiles");
-
             // Re-check connectivity after this pass
             isolated = FindIsolatedTiles(connStartX, connStartZ);
 
-            if (isolated.Count == 0)
-            {
-                Debug.Log($"Level {levelIndex}: ✓ All tiles connected after {repairPass} pass(es)!");
-                break;
-            }
+            if (isolated.Count == 0) break;
+
+            // No progress — stop early rather than burning through remaining passes uselessly
+            if (repaired == 0) break;
         }
         isRepairing = false;
 
-        if (isolated.Count > 0)
+        // Extra repair phase: if isolated count is still above the threshold after standard passes,
+        // run up to 5 more passes before handing off to validation.
+        // This gives the new Strategy 3 (and Strategy 2) more chances on stubborn tiles without
+        // inflating the standard pass count for levels that need very few repairs.
+        if (isolated.Count > isolatedTileThreshold)
         {
-            Debug.LogWarning($"Level {levelIndex}: {isolated.Count} tiles remain isolated after {repairPass} passes");
-            foreach (Vector2Int pos in isolated)
+            isRepairing = true;
+            int extraPass = 0;
+            while (isolated.Count > isolatedTileThreshold && extraPass < 5)
             {
-                Debug.Log($"  - Isolated tile at ({pos.x},{pos.y})");
+                extraPass++;
+                int repaired = 0;
+                foreach (Vector2Int isoPos in isolated)
+                {
+                    if (TryRepairIsolatedTile(isoPos.x, isoPos.y, connStartX, connStartZ, levelParent))
+                        repaired++;
+                }
+                isolated = FindIsolatedTiles(connStartX, connStartZ);
+                if (repaired == 0) break; // No progress — stop early
             }
+            isRepairing = false;
+        }
+
+        // Best-attempt tracking: reset on the first try for this level, then save this
+        // attempt if it has fewer isolated tiles than any attempt seen so far.
+        // The best parent is kept alive (not destroyed on retry) so we can fall back to it.
+        if (attemptNumber == 1)
+        {
+            bestAttemptIsolatedCount = int.MaxValue;
+            bestAttemptLevelParent   = null;
+            bestAttemptPlacedTiles   = null;
+            bestAttemptPlacedConfigs = null;
+        }
+        if (isolated.Count < bestAttemptIsolatedCount)
+        {
+            // New best — destroy the old saved parent and store this one
+            if (bestAttemptLevelParent != null && bestAttemptLevelParent != levelParent)
+                DestroyImmediate(bestAttemptLevelParent);
+            bestAttemptLevelParent   = levelParent;
+            bestAttemptIsolatedCount = isolated.Count;
+            // Shallow-clone the arrays — the GOs they reference are children of bestAttemptLevelParent
+            // which we are keeping alive, so the references remain valid.
+            bestAttemptPlacedTiles   = (GameObject[,])placedTiles.Clone();
+            bestAttemptPlacedConfigs = (TileConfig[,])placedConfigs.Clone();
         }
 
         // Run comprehensive validation
         if (!ValidateFullConnectivity(connStartX, connStartZ, levelParent, levelIndex))
         {
-            if (attemptNumber < 3)
+            if (attemptNumber < maxGenerationAttempts)
             {
-                Debug.LogWarning($"Level {levelIndex} attempt {attemptNumber} failed validation. Retrying...");
+                Debug.LogWarning($"Level {levelIndex} attempt {attemptNumber} failed validation. Retrying... ({attemptNumber}/{maxGenerationAttempts})");
 
-                // Clear this failed attempt
-                if (levelParent != null)
-                {
+                // Only destroy this attempt if it is NOT the saved best — we want to keep
+                // the best parent alive across retries so we can fall back to it at the end.
+                if (levelParent != bestAttemptLevelParent && levelParent != null)
                     DestroyImmediate(levelParent);
-                }
                 if (levelParents.Count > levelIndex)
-                {
                     levelParents[levelIndex] = null;
-                }
 
-                // Retry generation
                 GenerateLevel(levelIndex, attemptNumber + 1);
                 return;
             }
             else
             {
-                Debug.LogError($"Level {levelIndex} failed validation after 3 attempts. Using best attempt available.");
-                // Continue with this level as the "best attempt"
+                // All attempts exhausted. If a previous attempt had fewer isolated tiles,
+                // switch to it now so the rest of GenerateLevel (decorations, stairs, etc.)
+                // runs on the best data rather than whatever the last attempt produced.
+                if (bestAttemptLevelParent != null && bestAttemptLevelParent != levelParent)
+                {
+                    DestroyImmediate(levelParent);
+                    levelParent   = bestAttemptLevelParent;
+                    placedTiles   = bestAttemptPlacedTiles;
+                    placedConfigs = bestAttemptPlacedConfigs;
+                    if (levelParents.Count > levelIndex) levelParents[levelIndex] = levelParent;
+                    Debug.LogWarning($"Level {levelIndex}: all {maxGenerationAttempts} attempts exceeded threshold — " +
+                                     $"using best result ({bestAttemptIsolatedCount} isolated tiles).");
+                }
+                else
+                {
+                    Debug.LogWarning($"Level {levelIndex}: all {maxGenerationAttempts} attempts exceeded threshold — " +
+                                     $"using current result ({isolated.Count} isolated tiles).");
+                }
+
+                // All retries exhausted and isolated count still exceeds the threshold.
+                // Force-remove every remaining isolated tile — they are unreachable, so
+                // leaving them causes gameplay bugs (code numbers / items in sealed rooms).
+                // A missing floor tile is less harmful than an inaccessible room.
+                List<Vector2Int> finalIsolated = FindIsolatedTiles(connStartX, connStartZ);
+                if (finalIsolated.Count > 0)
+                {
+                    foreach (Vector2Int isoPos in finalIsolated)
+                    {
+                        SafeDestroy(placedTiles[isoPos.x, isoPos.y]);
+                        placedTiles[isoPos.x, isoPos.y]   = null;
+                        placedConfigs[isoPos.x, isoPos.y] = null;
+                    }
+                    Debug.LogWarning($"[ProceduralDungeonGenerator] Level {levelIndex}: force-removed {finalIsolated.Count} unreachable isolated tile(s) after all {maxGenerationAttempts} attempts failed to meet threshold ({isolatedTileThreshold}).");
+                }
+
+                // Tracking fields are cleared in the unconditional block below.
             }
         }
-        else
-        {
-            Debug.Log($"✓ Level {levelIndex} generated successfully on attempt {attemptNumber}");
-        }
 
-        AddDecorations(levelParent);
+        // Validation passed (or we restored the best attempt above). If an earlier attempt's
+        // parent is still alive as the saved "best", destroy it now — we don't need it and
+        // leaving it in the scene would create duplicate tile geometry with no doors or sealers.
+        if (bestAttemptLevelParent != null && bestAttemptLevelParent != levelParent)
+            DestroyImmediate(bestAttemptLevelParent);
+        bestAttemptLevelParent   = null;
+        bestAttemptPlacedTiles   = null;
+        bestAttemptPlacedConfigs = null;
+        bestAttemptIsolatedCount = int.MaxValue;
+
         // Only place departure stairs if there is a level below this one
         if (levelIndex < numberOfLevels - 1)
             PlaceStairsOnEdge(levelParent, levelIndex, connStartX, connStartZ);
@@ -399,7 +526,7 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         // Set up the player spawn room on a different perimeter edge of this level
         SpawnRoomSetup spawnRoom = FindObjectOfType<SpawnRoomSetup>();
         if (spawnRoom != null)
-            spawnRoom.SetupLevel(this, levelIndex, levelParent);
+            spawnRoom.SetupLevel(this, levelIndex, levelParent, connStartX, connStartZ);
 
         SetupKeypads();
 
@@ -411,12 +538,32 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         bool spawnHiddenRoom = levelIndex >= 2;
         bool spawnComputer   = levelIndex >= 1;
 
+        // Computer room setup runs FIRST so HiddenRoomSetup can read its tile and avoid it.
+        // ComputerRoomSetup does not depend on CodeNumberManager or HiddenRoomSetup.
+        ComputerRoomSetup computerRoom = FindObjectOfType<ComputerRoomSetup>();
+        if (computerRoom != null && spawnComputer)
+            computerRoom.SetupLevel(this, levelIndex, levelParent, spawnRoom, connStartX, connStartZ);
+
         // Hidden room setup runs BEFORE CodeNumberManager so it can register the
         // hidden-room tile as excluded (preventing a duplicate wall number there).
+        // Runs AFTER ComputerRoomSetup so it can also exclude the computer room tile.
         HiddenRoomSetup hiddenRoom = HiddenRoomSetup.Instance;
         if (hiddenRoom == null) hiddenRoom = FindObjectOfType<HiddenRoomSetup>();
         if (hiddenRoom != null && spawnHiddenRoom)
             hiddenRoom.SetupLevel(this, levelIndex, levelParent, spawnRoom, connStartX, connStartZ);
+
+        // Detonation room — only on the last level (no stairway level).
+        // Runs BEFORE CodeNumberManager so that nulled tiles are excluded from number placement.
+        // Runs AFTER ComputerRoom and HiddenRoom so it can exclude their tiles.
+        if (levelIndex == numberOfLevels - 1)
+        {
+            DetonationRoomSetup detRoom = DetonationRoomSetup.Instance;
+            if (detRoom == null) detRoom = FindObjectOfType<DetonationRoomSetup>();
+            if (detRoom != null)
+                detRoom.SetupLevel(this, levelIndex, levelParent,
+                                   spawnRoom, computerRoom, hiddenRoom,
+                                   connStartX, connStartZ);
+        }
 
         // Notify CodeNumberManager so it can spawn collectible code numbers for this level.
         // Always use the singleton Instance so InitializeForLevel and OnDigitCollected
@@ -427,24 +574,37 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (codeManager != null)
             codeManager.InitializeForLevel(this, levelIndex, connStartX, connStartZ, wallNumberCount);
 
+        // Spawn lockers AFTER CodeNumberManager so we can exclude tiles that already
+        // have code numbers on their walls — prevents lockers blocking collectible digits.
+        LockerSetup lockerSetup = FindObjectOfType<LockerSetup>();
+        if (lockerSetup != null)
+        {
+            NPCSpawnManager npcSpawnMgr = FindObjectOfType<NPCSpawnManager>();
+            lockerSetup.SetupLevel(this, levelIndex, levelParent,
+                                   spawnRoom, hiddenRoom, computerRoom, safeRoom, npcSpawnMgr);
+        }
+
+        // Scatter battery pickups and any extra floor items (flashlight, etc.) for this level.
+        BatterySpawnSetup batterySpawn = FindObjectOfType<BatterySpawnSetup>();
+        if (batterySpawn != null)
+            batterySpawn.SetupLevel(this, levelIndex, levelParent,
+                                    spawnRoom, safeRoom, hiddenRoom, computerRoom);
+
         // Now that CodeNumberManager has generated digits, spawn the hidden room's number (slot 2)
         if (hiddenRoom != null && spawnHiddenRoom)
             hiddenRoom.SpawnNumberAfterInit(levelIndex, tileSize);
 
-        // Spawn computer terminal in its own safe room on a perimeter tile
-        // Pass SpawnRoomSetup so the computer room avoids picking the same tile
-        ComputerRoomSetup computerRoom = FindObjectOfType<ComputerRoomSetup>();
-        if (computerRoom != null && spawnComputer)
-            computerRoom.SetupLevel(this, levelIndex, levelParent, spawnRoom);
-
         PrintLevelDebug(levelIndex, connStartX, connStartZ);
 
-        // Save this level's configs for gizmos
+        // Save this level's configs and reachable set (used by DungeonNavMeshSetup to
+        // filter spawn zones — must be captured now while placedTiles/placedConfigs are
+        // still set to this level, before the next GenerateLevel call resets them).
         TileConfig[,] levelConfigsCopy = new TileConfig[dungeonWidth, dungeonHeight];
         for (int x = 0; x < dungeonWidth; x++)
             for (int z = 0; z < dungeonHeight; z++)
                 levelConfigsCopy[x, z] = placedConfigs[x, z];
         allLevelConfigs[levelIndex] = levelConfigsCopy;
+        allLevelReachable[levelIndex] = FloodFillReachable(connStartX, connStartZ);
 
         // Setup NavMesh and NPC spawning for this level.
         // At runtime (deferNavMesh = true) the bake is deferred to GenerateDungeonCoroutine()
@@ -455,13 +615,14 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             DungeonNavMeshSetup navSetup = GetComponent<DungeonNavMeshSetup>();
             if (navSetup != null)
                 navSetup.SetupLevel(levelParent, levelIndex, levelConfigsCopy,
-                                    dungeonWidth, dungeonHeight, tileSize, levelHeight);
+                                    dungeonWidth, dungeonHeight, tileSize, levelHeight,
+                                    connStartX, connStartZ);
             else
                 Debug.LogError("DungeonNavMeshSetup component NOT FOUND!");
         }
         else
         {
-            pendingNavMeshLevels.Add((levelParent, levelIndex, levelConfigsCopy));
+            pendingNavMeshLevels.Add((levelParent, levelIndex, levelConfigsCopy, connStartX, connStartZ));
         }
 
         // Seal all Wall edges with invisible collider barriers to prevent wall walk-through
@@ -469,7 +630,10 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (sealer != null)
             sealer.SealLevel(this, levelIndex, levelParent);
 
-        Debug.Log($"Level {levelIndex}: {tilesPlaced} tiles in {attempts} attempts");
+        // Register with the level visibility manager.
+        // Static batching and InitialHide are called by GenerateDungeon AFTER all levels
+        // are complete, so this just records the parent for later show/hide management.
+        levelVisibility?.RegisterLevel(levelIndex, levelParent);
     }
 
 
@@ -635,9 +799,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (chosen != null)
         {
             PlaceTile(x, z, chosen, parent);
-#if UNITY_EDITOR
-            Debug.Log($"Used relaxed matching at ({x},{z}) - {chosen.name}");
-#endif
             return true;
         }
 
@@ -646,8 +807,12 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
 
         if (isPerimeter)
         {
-            // PERIMETER FALLBACK: Find any tile with Wall on outward edge(s)
-            // A mismatched real tile is better than a fill (no walls) or empty gap
+            // PERIMETER FALLBACK: Find any tile with Wall on outward edge(s).
+            // A mismatched real tile is better than a fill (no walls) or empty gap.
+            // CRITICAL: the tile must also have at least one non-Wall inward edge so it
+            // can connect to the rest of the dungeon. A fully-sealed tile (all edges Wall)
+            // placed at a corner would be permanently isolated and trigger the stacking bug
+            // in TryRepairIsolatedTile — never place one here.
             List<GameObject> perimeterSafe = new List<GameObject>();
             foreach (GameObject prefab in allTilePrefabs)
             {
@@ -656,12 +821,19 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 TileConfig cfg = tileConfigs[prefab.name];
 
                 // Must have Wall on every outward-facing edge
-                if (x == 0 && cfg.west != EdgeType.Wall) continue;
-                if (x == dungeonWidth - 1 && cfg.east != EdgeType.Wall) continue;
-                if (z == 0 && cfg.south != EdgeType.Wall) continue;
-                if (z == dungeonHeight - 1 && cfg.north != EdgeType.Wall) continue;
+                if (x == 0              && cfg.west  != EdgeType.Wall) continue;
+                if (x == dungeonWidth-1 && cfg.east  != EdgeType.Wall) continue;
+                if (z == 0              && cfg.south != EdgeType.Wall) continue;
+                if (z == dungeonHeight-1 && cfg.north != EdgeType.Wall) continue;
 
-                // Corner positions need Wall on both outward edges (already covered above)
+                // Must have at least one Open inward-facing edge so the tile isn't
+                // a sealed box that will always be isolated and can't be repaired.
+                bool hasInwardOpen = false;
+                if (x != 0              && cfg.west  == EdgeType.Open) hasInwardOpen = true;
+                if (x != dungeonWidth-1 && cfg.east  == EdgeType.Open) hasInwardOpen = true;
+                if (z != 0              && cfg.south == EdgeType.Open) hasInwardOpen = true;
+                if (z != dungeonHeight-1 && cfg.north == EdgeType.Open) hasInwardOpen = true;
+                if (!hasInwardOpen) continue;
 
                 perimeterSafe.Add(prefab);
             }
@@ -670,9 +842,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             {
                 GameObject perimFallback = perimeterSafe[Random.Range(0, perimeterSafe.Count)];
                 PlaceTile(x, z, perimFallback, parent);
-#if UNITY_EDITOR
-                Debug.LogWarning($"Perimeter fallback at ({x},{z}) - {perimFallback.name}");
-#endif
                 return false; // Don't expand frontier from fallback placement
             }
         }
@@ -684,9 +853,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             if (fillTile != null)
             {
                 PlaceTile(x, z, fillTile, parent);
-#if UNITY_EDITOR
-                Debug.LogWarning($"Used fill tile at ({x},{z}) - marked as dead end");
-#endif
                 return false; // Return FALSE to prevent frontier expansion
             }
         }
@@ -725,9 +891,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                                 z == 0 || z == dungeonHeight - 1);
             if (isPerimeter)
             {
-#if UNITY_EDITOR
-                Debug.LogWarning($"Rejected Fill tile at ({x},{z}) - cannot place at perimeter (walk-off hazard)");
-#endif
                 return false;
             }
         }
@@ -778,9 +941,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
 
                 if (!hasAllNeighbors)
                 {
-#if UNITY_EDITOR
-                    Debug.Log($"Rejected {config.tileName} at ({x},{z}) - {openingCount} openings near edge");
-#endif
                     return false;
                 }
             }
@@ -819,9 +979,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             // If 2+ neighbors are also 2-opening tiles, reject to prevent closed loop formation
             if (twoOpeningNeighbors >= 2)
             {
-#if UNITY_EDITOR
-                Debug.Log($"Rejected {config.tileName} at ({x},{z}) - would form closed loop with {twoOpeningNeighbors} 2-opening neighbors");
-#endif
                 return false;
             }
         }
@@ -834,9 +991,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
 
             if (openingCount == 1 && singleOpeningLRNeighbors >= 1)
             {
-#if UNITY_EDITOR
-                Debug.LogWarning($"Rejected {config.tileName} at ({x},{z}) - L/R tiles clustering (would form isolated chain)");
-#endif
                 return false;
             }
 
@@ -875,9 +1029,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                         TileConfig farNeighbor = placedConfigs[ad.x, ad.y];
                         if (farNeighbor.HasLeftOrRightEdge() && farNeighbor.GetOpeningCount() == 1)
                         {
-#if UNITY_EDITOR
-                            Debug.LogWarning($"Rejected {config.tileName} at ({x},{z}) - would seal L/R chain through ({d.x},{d.y})");
-#endif
                             return false;
                         }
                     }
@@ -972,41 +1123,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (tileConfigs.ContainsKey(prefab.name)) placedConfigs[x, z] = tileConfigs[prefab.name];
     }
 
-    void AddDecorations(GameObject parent)
-    {
-        if (decorationObjects == null) decorationObjects = new List<GameObject>();
-
-        for (int x = 0; x < dungeonWidth; x++)
-        {
-            for (int z = 0; z < dungeonHeight; z++)
-            {
-                if (placedConfigs[x, z] == null) continue;
-                TileConfig config = placedConfigs[x, z];
-                Vector3 tilePos = new Vector3(x * tileSize, parent.transform.position.y, z * tileSize);
-
-                if (pillerPrefab != null && config.IsFullyOpen() && Random.value < pillarChance)
-                {
-                    GameObject pillar = Instantiate(pillerPrefab, tilePos, Quaternion.identity, parent.transform);
-                    pillar.name = $"Pillar_{x}_{z}";
-                    decorationObjects.Add(pillar);
-                }
-
-                if (wallDoorPrefab != null && Random.value < doorChance && !config.IsRoomTile())
-                {
-                    if (x > 0 && placedConfigs[x - 1, z] != null && placedConfigs[x - 1, z].IsRoomTile())
-                    {
-                        Vector3 doorPos = tilePos + new Vector3(0, 0, -tileSize / 4);
-                        GameObject door = Instantiate(wallDoorPrefab, doorPos, Quaternion.identity, parent.transform);
-                        door.name = $"Door_{x}_{z}_N";
-                        decorationObjects.Add(door);
-                    }
-                }
-            }
-        }
-
-        Debug.Log($"Added {decorationObjects.Count} decorations");
-    }
-
     void PlaceStairsOnEdge(GameObject parent, int levelIndex, int connStartX, int connStartZ)
     {
         // Find all stairs tiles
@@ -1062,6 +1178,13 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 // Only check perimeter positions
                 if (x != 0 && x != dungeonWidth - 1 && z != 0 && z != dungeonHeight - 1) continue;
                 if (placedTiles[x, z] == null) continue;
+
+                // Avoid corners: stairs near grid corners force the next level's BFS
+                // to start on two constrained perimeter edges at once, frequently
+                // trapping the frontier in a tiny pocket with most tiles isolated.
+                bool nearCorner = (x <= 2 || x >= dungeonWidth - 3) &&
+                                  (z <= 2 || z >= dungeonHeight - 3);
+                if (nearCorner) continue;
 
                 // The one-step-inward tile must be reachable from connStart AND
                 // must be a room tile (all Open/Wall edges) so the safe room that
@@ -1120,9 +1243,12 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             placedTiles[chosen.x, chosen.z].name = $"Tile_{chosen.x}_{chosen.z}_{chosen.prefab.name}";
             if (tileConfigs.ContainsKey(chosen.prefab.name)) placedConfigs[chosen.x, chosen.z] = tileConfigs[chosen.prefab.name];
 
+            // Register with visibility manager so the stairway can be reparented to the
+            // persistent Stairways root in InitialHide — keeps it visible when its level hides.
+            levelVisibility?.RegisterStairway(placedTiles[chosen.x, chosen.z]);
+
             // Save stairs position for next level to use as entrance
             stairsPositions.Add(new Vector2Int(chosen.x, chosen.z));
-            Debug.Log($"Level {levelIndex}: Placed stairs at edge ({chosen.x},{chosen.z}) - {chosen.prefab.name}");
         }
         else
         {
@@ -1158,11 +1284,30 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (computerRoom != null)
             computerRoom.ClearAll();
 
+        // Clear battery pickups and extra floor items
+        BatterySpawnSetup batterySpawn = FindObjectOfType<BatterySpawnSetup>();
+        if (batterySpawn != null)
+            batterySpawn.ClearAll();
+
         // Clear hidden room breakable walls, goggles pickup, and excluded tile registry
         HiddenRoomSetup hiddenRoom = HiddenRoomSetup.Instance;
         if (hiddenRoom == null) hiddenRoom = FindObjectOfType<HiddenRoomSetup>();
         if (hiddenRoom != null)
             hiddenRoom.ClearAll();
+
+        // Clear detonation room prefab and state
+        DetonationRoomSetup detRoom = DetonationRoomSetup.Instance;
+        if (detRoom == null) detRoom = FindObjectOfType<DetonationRoomSetup>();
+        if (detRoom != null)
+            detRoom.ClearAll();
+
+        // Clear intro room (re-placed after each generation)
+        IntroRoomSetup introRoom = FindObjectOfType<IntroRoomSetup>();
+        if (introRoom != null)
+            introRoom.ClearRoom();
+
+        // Clear level visibility state before level parents are destroyed
+        levelVisibility?.ClearAll();
 
         // Clear all level parents and their children
         if (levelParents != null)
@@ -1180,15 +1325,9 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 for (int z = 0; z < placedTiles.GetLength(1); z++)
                     SafeDestroy(placedTiles[x, z]);
 
-        if (decorationObjects != null)
-        {
-            foreach (GameObject decoration in decorationObjects)
-                SafeDestroy(decoration);
-            decorationObjects.Clear();
-        }
-
         // Clear all multi-level data
         allLevelConfigs.Clear();
+        allLevelReachable.Clear();
         stairsPositions.Clear();
 
         placedTiles = null;
@@ -1244,7 +1383,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                     // Remove any stale listeners from a previous generation, then add fresh.
                     keypadLogic.OnAccessGranted.RemoveAllListeners();
                     keypadLogic.OnAccessGranted.AddListener(door.OpenDoor);
-                    Debug.Log($"SetupKeypads: Wired {keypadLogic.name} → {door.name}.OpenDoor()");
                 }
                 else
                 {
@@ -1253,6 +1391,5 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             }
         }
 
-        Debug.Log($"Setup {keypads.Length} keypads");
     }
 }

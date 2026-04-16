@@ -16,8 +16,9 @@ public class DoorWinkInteraction : MonoBehaviour
     [SerializeField] private float rayDistance = 4f;
     [Tooltip("Radius for gaze detection so open doorway center still catches the door")]
     [SerializeField] private float gazeHitRadius = 0.2f;
-    [Tooltip("Text shown at the bottom of the screen when looking at a door")]
-    [SerializeField] private string doorPromptText = "Blink to open / close door";
+
+    // Not serialized — keeps the prompt text consistent regardless of old serialized scene data.
+    private const string doorPromptText = "Blink to open / close door";
 
     private SafeRoomDoor currentDoor;
     private Text uiPrompt;
@@ -50,6 +51,11 @@ public class DoorWinkInteraction : MonoBehaviour
                 targeted = hit.collider.GetComponentInParent<SafeRoomDoor>();
                 if (targeted == null)
                     targeted = hit.collider.GetComponent<SafeRoomDoor>();
+
+                // Ignore doors managed by IntroDoorInteraction — that script
+                // handles its own gaze, text, and open logic independently.
+                if (targeted != null && targeted.GetComponent<IntroDoorInteraction>() != null)
+                    targeted = null;
             }
         }
 

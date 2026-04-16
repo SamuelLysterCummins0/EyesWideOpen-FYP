@@ -35,6 +35,15 @@ public class SpawnRoomCheckpoint : MonoBehaviour
         if (GameManager.Instance != null)
             GameManager.Instance.SetCurrentLevel(levelIndex);
 
+        // When the player first drops into the dungeon from the intro room,
+        // restore the HUD elements that were hidden during the intro sequence
+        // and disable the intro room geometry for performance.
+        if (levelIndex == 0)
+        {
+            HUDManager.Instance?.SetIntroMode(false);
+            IntroRoomSetup.Instance?.DisableIntroRoom();
+        }
+
         Debug.Log($"SpawnRoomCheckpoint: Level {levelIndex} checkpoint activated. Respawn point updated.");
 
         StartCoroutine(ShowNotification("Checkpoint saved"));

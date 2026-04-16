@@ -59,3 +59,4 @@ MonoBehaviour:
   minDistanceFromPlayer: 15
   minDistanceBetweenNPCs: 10
   showSpawnZones: 1
+  safeRoomExclusionRadius: 8

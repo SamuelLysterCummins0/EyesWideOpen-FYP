@@ -24,15 +24,30 @@ public class GazeDetector : MonoBehaviour
     private GameObject debugCursor;
     private RectTransform debugCursorRect;
 
+    // Whether the face is currently detected by MediaPipe (no gating).
+    // GazeCalibration reads this so calibration still works before gaze is enabled.
+    public bool IsFaceDetected { get; private set; }
+
+    // Whether gaze is active for gameplay — false until the face-scan calibration
+    // completes in the intro room. All gameplay gaze scripts check IsTracking,
+    // so setting this to false fully blocks all in-world gaze interactions.
+    public bool IsGazeActive { get; private set; } = false;
+
+    // The value gameplay scripts use. False until IsGazeActive is flipped on.
+    public bool IsTracking => IsGazeActive && IsFaceDetected;
+
     public Vector2 GazeNormalized => smoothedPosition;
     public Vector2 ScreenPosition => screenPosition;
-    public bool IsTracking { get; private set; }
 
     private void Start()
     {
         if (showDebugCursor)
         {
             CreateDebugCursor();
+            // Cursor starts hidden — SetGazeActive(true) will reveal it when the
+            // intro face-scan completes. If there is no intro room in the scene
+            // the cursor remains hidden until manually enabled via SetGazeActive.
+            SetDebugCursorVisible(false);
         }
     }
 
@@ -49,15 +64,26 @@ public class GazeDetector : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Enables or disables gaze for gameplay. Call with true once the face-scan
+    /// calibration completes; false to block all in-world gaze interactions.
+    /// Also shows/hides the gaze cursor dot.
+    /// </summary>
+    public void SetGazeActive(bool active)
+    {
+        IsGazeActive = active;
+        SetDebugCursorVisible(active);
+    }
+
     public void ProcessLandmarks(List<NormalizedLandmark> landmarks)
     {
         if (landmarks == null || landmarks.Count < 478)
         {
-            IsTracking = false;
+            IsFaceDetected = false;
             return;
         }
 
-        IsTracking = true;
+        IsFaceDetected = true;
 
         // Just track nose tip position
         Vector2 facePos = new Vector2(

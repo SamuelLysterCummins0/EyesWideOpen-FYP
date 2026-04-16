@@ -1,0 +1,125 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &8715378561142025965
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 2.1495056
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.033001147
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 9.825746
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -7511558181221131132, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_Materials.Array.data[0]
+      value: 
+      objectReference: {fileID: 2100000, guid: 5a83f9074d88bf240bf8ef56de58674b, type: 2}
+    - target: {fileID: 919132149155446097, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      propertyPath: m_Name
+      value: Toy Flashlight 1
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: -1209939557713882490}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 326328969928367819}
+  m_SourcePrefab: {fileID: 100100000, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+--- !u!1 &8372850804236866492 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f724fbe85645ef428914cfa7c61ce19, type: 3}
+  m_PrefabInstance: {fileID: 8715378561142025965}
+  m_PrefabAsset: {fileID: 0}
+--- !u!65 &-1209939557713882490
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8372850804236866492}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.15180516, y: 0.12193405, z: 0.24910693}
+  m_Center: {x: -0.0016800116, y: 0.027965859, z: 0.000097841024}
+--- !u!114 &326328969928367819
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8372850804236866492}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5e810d52499ae57409b9c6bdaf8eb4d4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  rayDistance: 5
+  gazeHitRadius: 0.5
+  promptMessage: Blink to pick up flashlight
+  glowColor: {r: 1, g: 0.9, b: 0.3, a: 1}
+  glowIntensity: 2.5
+  pulseSpeed: 3

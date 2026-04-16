@@ -58,8 +58,15 @@ public class HiddenRoomSetup : MonoBehaviour
     [Tooltip("Goggles pickup won't spawn within this world-space distance of the spawn point.")]
     public float minGoggleSpawnDistance = 8f;
 
+    [Tooltip("The powerbox won't spawn within this world-space distance of the spawn room OR any safe room entrance. " +
+             "Increase to push it further from level entry points. (tileSize = 4, so 16 = 4 tiles away.)")]
+    public float minPowerboxDistanceFromSpawn = 16f;
+
     // ── Per-level tracked objects ──────────────────────────────────────────────
     private readonly List<GameObject> spawnedObjects = new List<GameObject>();
+    // World-space tile centres per level — used by DungeonNavMeshSetup to exclude from NPC spawn zones.
+    private readonly Dictionary<int, Vector3> hiddenRoomCentersByLevel = new Dictionary<int, Vector3>();
+    public List<Vector3> GetRoomCenters() => new List<Vector3>(hiddenRoomCentersByLevel.Values);
 
     // Cached after SetupLevel so SpawnNumberAfterInit can run post-CodeNumberManager
     private Vector2Int pendingHiddenPos = new Vector2Int(-1, -1);
@@ -115,7 +122,10 @@ public class HiddenRoomSetup : MonoBehaviour
             return;
         }
 
-        // 2. Exclude from normal code-number placement
+        // 2. Record the tile centre so DungeonNavMeshSetup can exclude it from NPC spawn zones.
+        hiddenRoomCentersByLevel[levelIndex] = new Vector3(hiddenPos.x * tileSize, levelY, hiddenPos.y * tileSize);
+
+        // 3. Exclude from normal code-number placement
         if (CodeNumberManager.Instance != null)
             CodeNumberManager.Instance.ExcludeTile(hiddenPos);
 
@@ -127,6 +137,53 @@ public class HiddenRoomSetup : MonoBehaviour
         pendingHiddenPos = hiddenPos;
         pendingGen       = gen;
 
+        // Build the set of tiles that powerbox and goggles must NOT land on.
+        // Covers: hidden room, all safe room entrances, spawn room, and computer room.
+        // A 1-tile buffer is added around each protected tile so items don't end up
+        // just inside a doorway and appear to be inside the protected room.
+        var coreProtected = new HashSet<Vector2Int>();
+        coreProtected.Add(hiddenPos);
+        coreProtected.Add(new Vector2Int(connStartX, connStartZ));
+
+        if (spawnRoom != null && spawnRoom.HasSpawnPoint(levelIndex))
+        {
+            Vector3 spawnWorld = spawnRoom.GetSpawnPoint(levelIndex);
+            coreProtected.Add(new Vector2Int(
+                Mathf.RoundToInt(spawnWorld.x / tileSize),
+                Mathf.RoundToInt(spawnWorld.z / tileSize)));
+        }
+
+        // All safe room entrance centres (covers both arrival and departure safe rooms).
+        SafeRoomSetup safeRoomSetup = FindObjectOfType<SafeRoomSetup>();
+        if (safeRoomSetup != null)
+        {
+            foreach (Vector3 center in safeRoomSetup.GetSafeRoomCenters())
+                coreProtected.Add(new Vector2Int(
+                    Mathf.RoundToInt(center.x / tileSize),
+                    Mathf.RoundToInt(center.z / tileSize)));
+        }
+
+        // Computer room ran before hidden room — its centres are already registered.
+        ComputerRoomSetup compRoom = FindObjectOfType<ComputerRoomSetup>();
+        if (compRoom != null)
+        {
+            foreach (Vector3 center in compRoom.GetRoomCenters())
+                coreProtected.Add(new Vector2Int(
+                    Mathf.RoundToInt(center.x / tileSize),
+                    Mathf.RoundToInt(center.z / tileSize)));
+        }
+
+        // Expand each protected tile by 1 so items can't land just inside a doorway.
+        var protectedTiles = new HashSet<Vector2Int>();
+        foreach (Vector2Int core in coreProtected)
+        {
+            protectedTiles.Add(core);
+            protectedTiles.Add(new Vector2Int(core.x + 1, core.y));
+            protectedTiles.Add(new Vector2Int(core.x - 1, core.y));
+            protectedTiles.Add(new Vector2Int(core.x, core.y + 1));
+            protectedTiles.Add(new Vector2Int(core.x, core.y - 1));
+        }
+
         // 5. Spawn the powerbox on a perimeter wall — must happen before goggles so
         //    we know which tile to co-locate the goggles pickup with.
         powerboxTile = new Vector2Int(-1, -1);
@@ -136,7 +193,13 @@ public class HiddenRoomSetup : MonoBehaviour
         }
         else
         {
-            powerboxTile = FindPowerboxTile(gen, reachable, hiddenPos, spawnRef, tileSize);
+            // Build the list of world positions the powerbox must stay far from:
+            // the level spawn point + every safe room entrance (stairs entry tiles).
+            List<Vector3> powerboxExclusions = new List<Vector3> { spawnRef };
+            if (safeRoomSetup != null)
+                powerboxExclusions.AddRange(safeRoomSetup.GetSafeRoomCenters());
+
+            powerboxTile = FindPowerboxTile(gen, reachable, protectedTiles, powerboxExclusions, tileSize);
             Debug.Log($"[HiddenRoomSetup] L{levelIndex}: powerbox tile = {powerboxTile}");
 
             if (powerboxTile.x >= 0)
@@ -157,8 +220,9 @@ public class HiddenRoomSetup : MonoBehaviour
             }
         }
 
-        // 6. Drop the goggles — prefer the powerbox tile so they're found together
-        SpawnGoggles(gen, reachable, hiddenPos, spawnRef, levelParent, tileSize, levelY, levelIndex);
+        // 6. Drop the goggles on level 2 only — prefer the powerbox tile so they're found together
+        if (levelIndex == 2)
+            SpawnGoggles(gen, reachable, protectedTiles, spawnRef, levelParent, tileSize, levelY, levelIndex);
     }
 
     // ── Tile selection ─────────────────────────────────────────────────────────
@@ -185,24 +249,61 @@ public class HiddenRoomSetup : MonoBehaviour
                 cfg.west  == ProceduralDungeonGenerator.EdgeType.Wall;
             if (!hasWall) continue;
 
-            // Needs an Open edge to seal
-            if (cfg.GetOpeningCount() < 1) continue;
-
-            // Needs at least one directional prefab assigned for its Open edge(s)
-            if (!HasPrefabForOpenEdges(cfg)) continue;
+            // Tile must be fully sealable: every genuine opening (both sides open) must
+            // have a breakable wall prefab, AND at least one such opening must exist
+            // (so the player can eventually break in).
+            if (!CanFullySeal(gen, pos, cfg)) continue;
 
             return pos;
         }
         return new Vector2Int(-1, -1);
     }
 
-    // Make sure we have a prefab for every Open edge we need to seal
-    private bool HasPrefabForOpenEdges(ProceduralDungeonGenerator.TileConfig cfg)
+    /// <summary>
+    /// Returns true if every genuine open passage on this tile can be sealed with a breakable wall,
+    /// AND at least one such passage exists (so the player has a way to break in).
+    ///
+    /// A "genuine opening" is an edge that is Open on the hidden room tile AND whose adjacent tile
+    /// also has an Open face back. Edges where the adjacent tile has a Wall facing back are already
+    /// physically sealed by that geometry — no breakable wall needed or wanted there.
+    /// </summary>
+    private bool CanFullySeal(ProceduralDungeonGenerator gen, Vector2Int pos, ProceduralDungeonGenerator.TileConfig cfg)
     {
-        if (cfg.north == ProceduralDungeonGenerator.EdgeType.Open && breakableWallNorth == null) return false;
-        if (cfg.south == ProceduralDungeonGenerator.EdgeType.Open && breakableWallSouth == null) return false;
-        if (cfg.east  == ProceduralDungeonGenerator.EdgeType.Open && breakableWallEast  == null) return false;
-        if (cfg.west  == ProceduralDungeonGenerator.EdgeType.Open && breakableWallWest  == null) return false;
+        bool hasGenuineEntry = false;
+
+        if (!CanSealEdge(gen, "north", cfg.north, breakableWallNorth, new Vector2Int(pos.x, pos.y + 1), ref hasGenuineEntry)) return false;
+        if (!CanSealEdge(gen, "south", cfg.south, breakableWallSouth, new Vector2Int(pos.x, pos.y - 1), ref hasGenuineEntry)) return false;
+        if (!CanSealEdge(gen, "east",  cfg.east,  breakableWallEast,  new Vector2Int(pos.x + 1, pos.y), ref hasGenuineEntry)) return false;
+        if (!CanSealEdge(gen, "west",  cfg.west,  breakableWallWest,  new Vector2Int(pos.x - 1, pos.y), ref hasGenuineEntry)) return false;
+
+        return hasGenuineEntry; // Reject tiles with no genuine entry at all
+    }
+
+    private bool CanSealEdge(
+        ProceduralDungeonGenerator gen,
+        string dir,
+        ProceduralDungeonGenerator.EdgeType edgeType,
+        GameObject prefab,
+        Vector2Int adjPos,
+        ref bool hasGenuineEntry)
+    {
+        if (edgeType != ProceduralDungeonGenerator.EdgeType.Open) return true; // Wall on this tile — already sealed
+
+        ProceduralDungeonGenerator.TileConfig adjCfg = gen.GetTileConfig(adjPos.x, adjPos.y);
+        if (adjCfg == null) return true; // Off-map edge — treated as sealed
+
+        bool adjIsFill = adjCfg.tileName == "Tiles_01_Fill";
+        ProceduralDungeonGenerator.EdgeType adjFacing = adjIsFill
+            ? ProceduralDungeonGenerator.EdgeType.Open
+            : (dir == "north" ? adjCfg.south :
+               dir == "south" ? adjCfg.north :
+               dir == "east"  ? adjCfg.west  : adjCfg.east);
+
+        if (adjFacing == ProceduralDungeonGenerator.EdgeType.Wall) return true; // Adjacent wall seals it naturally
+
+        // Genuine opening — needs a prefab to seal it
+        if (prefab == null) return false; // Can't seal this edge → tile not suitable
+        hasGenuineEntry = true;
         return true;
     }
 
@@ -223,30 +324,52 @@ public class HiddenRoomSetup : MonoBehaviour
         Vector3 centre = new Vector3(pos.x * tileSize, tile.transform.position.y, pos.y * tileSize);
         float   half   = tileSize * 0.5f;
 
-        // One directional prefab per face — identical pattern to SpawnRoomSetup.TryPlaceDoor
-        TryPlaceBreakableWall(cfg.north, breakableWallNorth, centre + new Vector3(0, 0,  half), parent, "HiddenWall_N");
-        TryPlaceBreakableWall(cfg.south, breakableWallSouth, centre + new Vector3(0, 0, -half), parent, "HiddenWall_S");
-        TryPlaceBreakableWall(cfg.east,  breakableWallEast,  centre + new Vector3( half, 0, 0), parent, "HiddenWall_E");
-        TryPlaceBreakableWall(cfg.west,  breakableWallWest,  centre + new Vector3(-half, 0, 0), parent, "HiddenWall_W");
+        // Seal every genuine opening with a breakable wall.
+        // A genuine opening = Open on this tile AND the adjacent tile's facing edge is also Open.
+        // If the adjacent tile already has a Wall facing back, that geometry physically seals the
+        // passage — placing a breakable wall there would cause mesh overlap/clipping.
+        TryPlaceBreakableWall(gen, "north", cfg.north, breakableWallNorth,
+            centre + new Vector3(0, 0,  half), new Vector2Int(pos.x, pos.y + 1), parent);
+        TryPlaceBreakableWall(gen, "south", cfg.south, breakableWallSouth,
+            centre + new Vector3(0, 0, -half), new Vector2Int(pos.x, pos.y - 1), parent);
+        TryPlaceBreakableWall(gen, "east",  cfg.east,  breakableWallEast,
+            centre + new Vector3( half, 0, 0), new Vector2Int(pos.x + 1, pos.y), parent);
+        TryPlaceBreakableWall(gen, "west",  cfg.west,  breakableWallWest,
+            centre + new Vector3(-half, 0, 0), new Vector2Int(pos.x - 1, pos.y), parent);
     }
 
     private void TryPlaceBreakableWall(
-        ProceduralDungeonGenerator.EdgeType edge,
+        ProceduralDungeonGenerator gen,
+        string dir,
+        ProceduralDungeonGenerator.EdgeType edgeType,
         GameObject prefab,
-        Vector3 pos,
-        GameObject parent,
-        string label)
+        Vector3 wallPos,
+        Vector2Int adjPos,
+        GameObject parent)
     {
-        if (edge != ProceduralDungeonGenerator.EdgeType.Open) return;
+        if (edgeType != ProceduralDungeonGenerator.EdgeType.Open) return;
         if (prefab == null)
         {
-            Debug.LogWarning($"[HiddenRoomSetup] No prefab assigned for edge needed by '{label}'.");
+            Debug.LogWarning($"[HiddenRoomSetup] No prefab assigned for {dir} wall — this opening will be unsealed.");
             return;
         }
 
-        // Use the prefab's own rotation (baked into the asset), same as SpawnRoomSetup
-        GameObject wall = Instantiate(prefab, pos, prefab.transform.rotation, parent.transform);
-        wall.name = $"BreakableWall_{label}";
+        ProceduralDungeonGenerator.TileConfig adjCfg  = gen.GetTileConfig(adjPos.x, adjPos.y);
+        GameObject                            adjTile = gen.GetPlacedTile(adjPos.x, adjPos.y);
+        if (adjCfg == null || adjTile == null) return;
+
+        bool adjIsFill = adjCfg.tileName == "Tiles_01_Fill";
+        ProceduralDungeonGenerator.EdgeType adjFacing = adjIsFill
+            ? ProceduralDungeonGenerator.EdgeType.Open
+            : (dir == "north" ? adjCfg.south :
+               dir == "south" ? adjCfg.north :
+               dir == "east"  ? adjCfg.west  : adjCfg.east);
+
+        // Adjacent tile's wall already seals this passage physically — skip to avoid overlap.
+        if (adjFacing == ProceduralDungeonGenerator.EdgeType.Wall) return;
+
+        GameObject wall = Instantiate(prefab, wallPos, prefab.transform.rotation, parent.transform);
+        wall.name = $"BreakableWall_HiddenWall_{char.ToUpper(dir[0])}";
         spawnedObjects.Add(wall);
     }
 
@@ -321,7 +444,7 @@ public class HiddenRoomSetup : MonoBehaviour
     private void SpawnGoggles(
         ProceduralDungeonGenerator gen,
         List<Vector2Int> reachable,
-        Vector2Int hiddenPos,
+        HashSet<Vector2Int> protectedTiles,
         Vector3 spawnRef,
         GameObject parent,
         float tileSize,
@@ -338,14 +461,17 @@ public class HiddenRoomSetup : MonoBehaviour
             Vector3 spawnPos = new Vector3(powerboxTile.x * tileSize, floorY, powerboxTile.y * tileSize);
             GameObject pickup = Instantiate(gogglePickupPrefab, spawnPos, Quaternion.identity, parent.transform);
             pickup.name = $"GogglesPickup_L{levelIndex}";
+            // Tell GazeItemPickup (wherever it sits in the prefab hierarchy) which root
+            // to destroy on pickup — prevents the child-component-only destroy bug.
+            pickup.GetComponentInChildren<GazeItemPickup>()?.SetPickupRoot(pickup);
             spawnedObjects.Add(pickup);
             return;
         }
 
-        // Fallback: any valid reachable tile (used if no powerbox is set up)
+        // Fallback: any valid reachable tile not in a protected room
         foreach (Vector2Int pos in reachable)
         {
-            if (pos == hiddenPos) continue;
+            if (protectedTiles.Contains(pos)) continue;
 
             Vector3 world = new Vector3(pos.x * tileSize, 0f, pos.y * tileSize);
             if (Vector3.Distance(world, spawnRef) < minGoggleSpawnDistance) continue;
@@ -359,6 +485,7 @@ public class HiddenRoomSetup : MonoBehaviour
             Vector3 spawnPos = new Vector3(pos.x * tileSize, floorY, pos.y * tileSize);
             GameObject pickup = Instantiate(gogglePickupPrefab, spawnPos, Quaternion.identity, parent.transform);
             pickup.name = $"GogglesPickup_L{levelIndex}";
+            pickup.GetComponentInChildren<GazeItemPickup>()?.SetPickupRoot(pickup);
             spawnedObjects.Add(pickup);
             return;
         }
@@ -374,8 +501,8 @@ public class HiddenRoomSetup : MonoBehaviour
     private Vector2Int FindPowerboxTile(
         ProceduralDungeonGenerator gen,
         List<Vector2Int> reachable,
-        Vector2Int hiddenPos,
-        Vector3 spawnRef,
+        HashSet<Vector2Int> protectedTiles,
+        List<Vector3> exclusionCenters,
         float tileSize)
     {
         int w = gen.DungeonWidth;
@@ -397,15 +524,26 @@ public class HiddenRoomSetup : MonoBehaviour
 
         foreach (Vector2Int pos in candidates)
         {
-            if (pos == hiddenPos) continue;
+            if (protectedTiles.Contains(pos)) continue;
 
             ProceduralDungeonGenerator.TileConfig cfg = gen.GetTileConfig(pos.x, pos.y);
             GameObject tile = gen.GetPlacedTile(pos.x, pos.y);
             if (cfg == null || tile == null || !cfg.IsRoomTile()) continue;
 
-            // Must be far enough from spawn
+            // Must be far enough from every entry point (spawn room + all safe room entrances).
+            // Y is ignored so the flat grid distance is compared regardless of level offset.
             Vector3 world = new Vector3(pos.x * tileSize, 0f, pos.y * tileSize);
-            if (Vector3.Distance(world, spawnRef) < minGoggleSpawnDistance) continue;
+            bool tooClose = false;
+            foreach (Vector3 exclusion in exclusionCenters)
+            {
+                Vector3 flat = new Vector3(exclusion.x, 0f, exclusion.z);
+                if (Vector3.Distance(world, flat) < minPowerboxDistanceFromSpawn)
+                {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) continue;
 
             // Confirm actual wall geometry exists via raycast on the outer face
             string outer  = GetOuterDirection(pos, w, h);
@@ -491,6 +629,7 @@ public class HiddenRoomSetup : MonoBehaviour
         pendingHiddenPos = new Vector2Int(-1, -1);
         powerboxTile     = new Vector2Int(-1, -1);
         pendingGen       = null;
+        hiddenRoomCentersByLevel.Clear();
 
         // Also wipe excluded tiles since we are tearing down everything
         if (CodeNumberManager.Instance != null)

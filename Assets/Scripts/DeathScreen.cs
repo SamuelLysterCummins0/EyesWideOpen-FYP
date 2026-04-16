@@ -9,13 +9,7 @@ public class DeathScreen : MonoBehaviour
     void Start()
     {
         deathScreen.SetActive(false);  // Hide at start
-        respawnButton.onClick.AddListener(OnRespawnClick);  // Add listener to button
-    }
-
-    void OnRespawnClick()
-    {
-        // Call respawn method from GameManager
-        GameManager.Instance.Respawn();
+        // GameManager.Start() already adds the respawn listener — don't add a second one here.
     }
 
     public void ShowDeathScreen()

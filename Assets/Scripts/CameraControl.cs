@@ -14,6 +14,7 @@ public class CameraControl : MonoBehaviour
 private Transform originalParent;
     public SUPERCharacterAIO playerController;
     public Transform jumpscareCamera;
+    public Transform pacerJumpscareCamera;
     public AudioSource jumpscareAudio;
 
     void Start()
@@ -39,11 +40,20 @@ private Transform originalParent;
         if (!isInJumpscare && !isReturningCamera)
         {
             StopAllCoroutines();
-            StartCoroutine(PerformJumpscare());
+            StartCoroutine(PerformJumpscare(jumpscareCamera));
         }
     }
 
-    private IEnumerator PerformJumpscare()
+    public void TriggerPacerJumpscare()
+    {
+        if (!isInJumpscare && !isReturningCamera)
+        {
+            StopAllCoroutines();
+            StartCoroutine(PerformJumpscare(pacerJumpscareCamera));
+        }
+    }
+
+    private IEnumerator PerformJumpscare(Transform jumpscareTarget)
     {
         isInJumpscare = true;
 
@@ -52,9 +62,9 @@ private Transform originalParent;
             playerController.enabled = false;
         }
 
-playerCameraTransform.parent = null;
-        transform.position = jumpscareCamera.position;
-        transform.rotation = jumpscareCamera.rotation;
+        playerCameraTransform.parent = null;
+        transform.position = jumpscareTarget.position;
+        transform.rotation = jumpscareTarget.rotation;
 
         if (jumpscareAudio != null)
         {

@@ -79,6 +79,10 @@ public class BreakableWall : MonoBehaviour
                 originalSharedMaterials = wallPanelRenderer.sharedMaterials;
         }
 
+        // Auto-find AudioSource if not assigned in the Inspector
+        if (audioSource == null)
+            audioSource = GetComponent<AudioSource>();
+
         // Register with GoggleController so it can trigger glow on/off
         if (GoggleController.Instance != null)
             GoggleController.Instance.RegisterWall(this);

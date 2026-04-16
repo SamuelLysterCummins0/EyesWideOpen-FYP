@@ -40,24 +40,35 @@ public class PowerboxInteraction : MonoBehaviour
 
     // ── Unity ─────────────────────────────────────────────────────────────────
 
+    private void Awake()
+    {
+        // Resolve particle reference early so OnEnable can use it before Start runs.
+        if (sparkParticles == null)
+            sparkParticles = GetComponentInChildren<ParticleSystem>();
+
+        if (sparkParticles == null)
+            Debug.LogWarning($"[Powerbox] {name} has no Spark Particles assigned and none found in children!");
+    }
+
+    private void OnEnable()
+    {
+        // Restart electricity VFX every time the level becomes visible.
+        // This covers both the first visit (Start hasn't run yet) and re-visits
+        // after the level was hidden and shown again (Start won't fire a second time).
+        if (!activated && sparkParticles != null)
+        {
+            sparkParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            sparkParticles.Play(true);
+        }
+    }
+
     private void Start()
     {
         gazeDetector  = FindObjectOfType<GazeDetector>();
         blinkDetector = FindObjectOfType<BlinkDetector>();
         playerCamera  = Camera.main;
 
-        if (sparkParticles == null)
-            sparkParticles = GetComponentInChildren<ParticleSystem>();
-
-        if (sparkParticles == null)
-            Debug.LogWarning($"[Powerbox] {name} has no Spark Particles assigned and none found in children!");
-        else
-        {
-            // Force-stop in case Play On Awake is checked, then start so electricity is
-            // already sparking when the player arrives on this level.
-            sparkParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-            sparkParticles.Play(true);
-        }
+        // sparkParticles already resolved in Awake; particles already started in OnEnable.
 
         BuildPromptUI();
     }

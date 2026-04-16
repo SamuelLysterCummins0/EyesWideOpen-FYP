@@ -11,7 +11,15 @@ public class HUDManager : MonoBehaviour
     public HotbarManager hotbarManager; 
     public Image maskDurationBar;
     public GameObject maskDurationBarContainer;
-    
+
+    [Header("Insanity Bar")]
+    public Image insanityBar;
+    public GameObject insanityBarContainer;
+
+    [Header("Intro Mode — hide until player enters dungeon")]
+    [Tooltip("The CodeNumberHUD panel GameObject — hidden during the intro room.")]
+    public GameObject codeNumberHUDContainer;
+
 
     private void Awake()
     {
@@ -93,5 +101,41 @@ public void ShowMaskDurationBar(bool show)
         {
             maskDurationBar.fillAmount = fillAmount;
         }
+    }
+
+    private void Start()
+    {
+        // If an IntroRoomSetup is in the scene the player starts in the intro room,
+        // so hide dungeon HUD elements until they drop into the dungeon.
+        if (FindObjectOfType<IntroRoomSetup>() != null)
+            SetIntroMode(true);
+    }
+
+    /// <summary>
+    /// Hides/shows the insanity bar, code number HUD, and locks the inventory.
+    /// Called with true at game start (intro room) and false when the player
+    /// drops into the Level 0 spawn room (SpawnRoomCheckpoint level 0).
+    /// </summary>
+    public void SetIntroMode(bool introActive)
+    {
+        if (insanityBarContainer != null)
+            insanityBarContainer.SetActive(!introActive);
+
+        if (codeNumberHUDContainer != null)
+            codeNumberHUDContainer.SetActive(!introActive);
+
+        InventoryManager.Instance?.SetInventoryLocked(introActive);
+    }
+
+    public void ShowInsanityBar(bool show)
+    {
+        if (insanityBarContainer != null)
+            insanityBarContainer.SetActive(show);
+    }
+
+    public void UpdateInsanityBar(float fillAmount)
+    {
+        if (insanityBar != null)
+            insanityBar.fillAmount = Mathf.Clamp01(fillAmount);
     }
 }

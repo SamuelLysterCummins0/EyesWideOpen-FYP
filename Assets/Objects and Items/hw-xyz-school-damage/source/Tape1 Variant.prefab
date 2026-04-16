@@ -1,0 +1,249 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &4548146797189767566
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: 2748124570262513156, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: Pan2D
+      value: -0.51
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 25.502
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.442
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 2.696
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4886251243547810276, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5225480905153971038, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: m_Name
+      value: Tape2 Variant
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: audioClip
+      value: 
+      objectReference: {fileID: 8300000, guid: 59a97d3656e9e96499618147032ae23d, type: 3}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.size
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.size
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[0]
+      value: '"If you''re hearing this... you''re still alive."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[1]
+      value: "\"This place \u2014 we called it the Facility. Endless corridors. No
+        exits.\""
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[2]
+      value: '"The anomalies. They only move when you''re not watching them."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[3]
+      value: '"Keep your eyes on them. That is not a suggestion."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[4]
+      value: '"But don''t stare too long. Something happens to you. Your mind starts
+        to fracture."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[5]
+      value: '"Find a safe room. Lock the doors. They won''t follow you in."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[6]
+      value: '"The corridors will go quiet. It''s the only way to come back from
+        it."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[7]
+      value: '"I scattered the access codes across this level deliberately."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[8]
+      value: '"Don''t use it until you''re sure you''re ready."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[9]
+      value: '"Good luck."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[0]
+      value: If you're hearing this... you're still alive. That's more than I can
+        say for most of us.
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[1]
+      value: "This place \u2014 we called it the Facility. Endless corridors. No
+        exits we could find. We didn't build it. We just... fell in."
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[2]
+      value: "The anomalies started appearing three days after we arrived. We don't
+        know what they are. They look almost human \u2014 until they move. They only
+        move when you're not watching them. The moment you look away, they close
+        in. Keep your eyes on them."
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[3]
+      value: That's not a suggestion.
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[4]
+      value: " But don't stare too long. Something happens to you. Your mind starts
+        to \u2014 [pause] fracture. We don't know why. If it gets bad, find a safe
+        room. Lock the doors, stay inside. They won't follow you in. The corridors
+        will go quiet. It's the only way to come back from it."
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[5]
+      value: ' I scattered the access codes across this level deliberately. If you''re
+        smart enough to survive long enough to find them all, you''re smart enough
+        to do what needs to be done.'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[6]
+      value: "Sub-level B. There's a detonation room. We built it as a last resort
+        \u2014 to bring the whole thing down. Don't use it until you're sure you're
+        ready."
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[7]
+      value: Good luck.
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[8]
+      value: '"There is a detonation room. Sub-level B. Built to bring all of this
+        down."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[9]
+      value: '"Don''t use it until you''re sure you''re ready."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.size
+      value: 8
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleTexts.Array.data[10]
+      value: '"Good luck."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.data[0]
+      value: 7
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.data[1]
+      value: 11
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.data[2]
+      value: 16
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.data[3]
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.data[4]
+      value: 19
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.data[5]
+      value: 7
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.data[6]
+      value: 10
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleDurations.Array.data[7]
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[0].text
+      value: '"If you''re hearing this... you''re still alive."'
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[1].text
+      value: "\"This place \u2014 we called it the Facility. Endless corridors. No
+        exits.\""
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[2].text
+      value: "This place \u2014 we called it the Facility. Endless corridors. No
+        exits."
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[0].duration
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[1].duration
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: 8714972037073746727, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}
+      propertyPath: subtitleLines.Array.data[2].duration
+      value: 4
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 7aea82fcd9ca3d74c9d7267c365ce62d, type: 3}

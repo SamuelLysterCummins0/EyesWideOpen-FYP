@@ -212,11 +212,12 @@ public class CodeNumber : MonoBehaviour
         if (isCollected) return;
         isCollected = true;
 
-        // Audio feedback.
-        if (collectSound != null && audioSource != null)
-            audioSource.PlayOneShot(collectSound);
+        // PlayClipAtPoint creates an independent one-shot AudioSource in the scene that
+        // continues playing even after this GameObject is deactivated — no coroutine needed.
+        if (collectSound != null)
+            AudioSource.PlayClipAtPoint(collectSound, transform.position);
 
-        // Hide the number from the world.
+        // Hide visuals immediately.
         if (quadRenderer != null) quadRenderer.enabled = false;
         if (digitLabel != null) digitLabel.enabled = false;
         if (progressRing != null) progressRing.enabled = false;
@@ -228,8 +229,32 @@ public class CodeNumber : MonoBehaviour
         // Notify the manager.
         onCollectedCallback?.Invoke(orderIndex, digit);
 
-        // Fade out and destroy after the audio finishes.
-        float delay = (collectSound != null) ? collectSound.length : 0.5f;
-        Destroy(gameObject, delay + 0.1f);
+        // Deactivate immediately — no coroutine, no timeScale race condition.
+        // ResetForRespawn() will SetActive(true) when the player respawns.
+        gameObject.SetActive(false);
+    }
+
+    /// <summary>
+    /// Called by CodeNumberManager when the player respawns.
+    /// Re-enables this number so it can be collected again.
+    /// </summary>
+    public void ResetForRespawn()
+    {
+        gameObject.SetActive(true);
+
+        isCollected = false;
+        isGazedAt   = false;
+        gazeLookTime = 0f;
+
+        if (quadRenderer != null) quadRenderer.enabled = true;
+        if (digitLabel != null)
+        {
+            digitLabel.enabled = true;
+            digitLabel.color   = originalTextColor;
+        }
+        if (progressRing != null) progressRing.enabled = false;
+
+        Collider col = GetComponent<Collider>();
+        if (col != null) col.enabled = true;
     }
 }

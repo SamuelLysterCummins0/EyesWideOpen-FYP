@@ -28,6 +28,13 @@ public class SafeRoomDoor : MonoBehaviour
     [Tooltip("Max distance for the player to interact with the door")]
     [SerializeField] private float interactDistance = 3f;
 
+    [Header("Audio")]
+    [Tooltip("Played when the door opens (slides up).")]
+    [SerializeField] private AudioClip openSound;
+    [Tooltip("Played when the door closes (slides down). Uses openSound if left null.")]
+    [SerializeField] private AudioClip closeSound;
+    [SerializeField] private AudioSource audioSource;
+
     private bool isOpen = false;
     private Vector3 closedLocalPos;
     private Vector3 openLocalPos;
@@ -48,6 +55,14 @@ public class SafeRoomDoor : MonoBehaviour
 
         if (obstacle != null)
             obstacle.enabled = true;
+
+        // Auto-find or create an AudioSource for door sounds.
+        if (audioSource == null)
+            audioSource = GetComponent<AudioSource>();
+        if (audioSource == null)
+            audioSource = gameObject.AddComponent<AudioSource>();
+        audioSource.spatialBlend = 1f; // 3D — volume falls off with distance
+        audioSource.playOnAwake  = false;
 
         // Cache player once — avoids FindGameObjectWithTag every frame
         GameObject playerObj = GameObject.FindGameObjectWithTag("Player");
@@ -93,6 +108,14 @@ public class SafeRoomDoor : MonoBehaviour
     public void Interact()
     {
         isOpen = !isOpen;
+
+        // Play the appropriate sound — opening or closing.
+        if (audioSource != null)
+        {
+            AudioClip clip = isOpen ? openSound : (closeSound != null ? closeSound : openSound);
+            if (clip != null)
+                audioSource.PlayOneShot(clip);
+        }
 
         // Slide the door panel
         if (doorPanel != null)

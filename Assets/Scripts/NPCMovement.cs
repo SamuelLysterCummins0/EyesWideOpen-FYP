@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -16,6 +17,12 @@ public class NPCMovement : MonoBehaviour
     private bool isActivated = false;
     private bool isCurrentlyVisible = false;
     private bool wasVisibleLastFrame = false;
+
+    /// <summary>
+    /// Set true by SirenPhaseManager during a Siren Phase.
+    /// Disables the gaze-freeze and blink-stop mechanics so this NPC runs freely.
+    /// </summary>
+    [HideInInspector] public bool sirenOverride = false;
 
     public float raycastOffset = 1f;
     public int raycastCount = 5;
@@ -47,6 +54,18 @@ public class NPCMovement : MonoBehaviour
     [Tooltip("How many animation frames to skip forward on each blink warp — gives visible pose change between blinks")]
     [SerializeField] private int blinkAnimFrameSkip = 8;
 
+    [Header("Insanity")]
+    [Tooltip("Insanity added per second while the player is directly looking at this NPC. Stacks — two visible NPCs add twice this rate, three add three times, etc.")]
+    [SerializeField] private float insanityBuildRate = 2f;
+
+    [Header("Siren Phase — Patrol")]
+    [Tooltip("During siren, angel only chases if the player is within this distance AND has line of sight.")]
+    [SerializeField] private float sirenDetectionRadius = 10f;
+    [Tooltip("Angel gives up the chase and returns to wander once the player is beyond this distance.")]
+    [SerializeField] private float sirenLoseRadius = 16f;
+    [Tooltip("How far the angel picks its random wander destinations during the siren phase.")]
+    [SerializeField] private float sirenWanderRadius = 20f;
+
     [Header("Blink Detection")]
     public BlinkDetector blinkDetector;
     public BlinkVignetteController vignetteController;
@@ -58,13 +77,37 @@ public class NPCMovement : MonoBehaviour
     [SerializeField] private AudioClip blinkMovementSound;
     [SerializeField] private float blinkMovementVolume = 0.3f;
 
-    private AudioSource movementAudioSource;
+    [Header("Movement Audio")]
+    [Tooltip("Looping sound played while the NPC is actively moving (siren phase walking, normal chase creep). 3D spatial.")]
+    [SerializeField] private AudioClip movementLoopClip;
+    [SerializeField] [Range(0f, 1f)] private float movementLoopVolume = 0.6f;
+
+    [Header("Flashlight Exposure (Angel Respawn)")]
+    [Tooltip("Seconds the player must hold the flashlight on this angel to trigger a respawn.")]
+    [SerializeField] private float flashlightHoldTimeToRespawn = 5f;
+    [Tooltip("How quickly the exposure meter decays per second when the flashlight is removed.")]
+    [SerializeField] private float flashlightExposureDecayRate = 1f;
+    [Tooltip("Maximum shake displacement (world units) at full exposure. The offset is applied to the root transform in LateUpdate so it is visible but never permanent — the NavMeshAgent corrects the position next frame.")]
+    [SerializeField] private float flashlightMaxShakeIntensity = 0.3f;
+
+    private AudioSource movementAudioSource;  // one-shot blink jump sounds
+    private AudioSource movementLoopSource;   // looping walk/creep sound
+
+    // Flashlight exposure state
+    private float           _flashlightExposure     = 0f;
+    private bool            _flashlightHitThisFrame = false;
+    private NPCSpawnManager _spawnManager;
+
+    // Siren phase wander state
+    private bool      sirenChasingPlayer  = false;
+    private Coroutine sirenWanderCoroutine = null;
 
     private void Start()
     {
         if (agent == null) agent = GetComponent<NavMeshAgent>();
         if (player == null) player = GameObject.FindGameObjectWithTag("Player")?.transform;
-        gameManager = FindObjectOfType<GameManager>();
+        gameManager   = FindObjectOfType<GameManager>();
+        _spawnManager = FindObjectOfType<NPCSpawnManager>();
         agent.speed = speed;
         baseSpeed = speed;
         baseDetectionRange = detectionRange;
@@ -87,15 +130,32 @@ public class NPCMovement : MonoBehaviour
             vignetteController.OnScreenFullyBlack.AddListener(OnScreenBlack);
         }
 
-        // Create audio source for movement sounds
+        // Register with SirenPhaseManager so it can set sirenOverride during a Siren Phase
+        SirenPhaseManager.Instance?.RegisterAngel(this);
+
+        // One-shot AudioSource for blink-jump sounds
         if (blinkMovementSound != null)
         {
             movementAudioSource = gameObject.AddComponent<AudioSource>();
-            movementAudioSource.clip = blinkMovementSound;
-            movementAudioSource.volume = blinkMovementVolume;
+            movementAudioSource.clip         = blinkMovementSound;
+            movementAudioSource.volume       = blinkMovementVolume;
             movementAudioSource.spatialBlend = 1f;
-            movementAudioSource.minDistance = 5f;
-            movementAudioSource.maxDistance = 20f;
+            movementAudioSource.minDistance  = 5f;
+            movementAudioSource.maxDistance  = 20f;
+            movementAudioSource.playOnAwake  = false;
+        }
+
+        // Looping AudioSource for continuous movement (walking / creeping)
+        if (movementLoopClip != null)
+        {
+            movementLoopSource = gameObject.AddComponent<AudioSource>();
+            movementLoopSource.clip         = movementLoopClip;
+            movementLoopSource.loop         = true;
+            movementLoopSource.volume       = movementLoopVolume;
+            movementLoopSource.spatialBlend = 1f;
+            movementLoopSource.minDistance  = 3f;
+            movementLoopSource.maxDistance  = 15f;
+            movementLoopSource.playOnAwake  = false;
         }
 
     }
@@ -107,6 +167,13 @@ public class NPCMovement : MonoBehaviour
             vignetteController.OnBlinkStart.RemoveListener(OnBlinkStarted);
             vignetteController.OnScreenFullyBlack.RemoveListener(OnScreenBlack);
         }
+
+        // Stop looping audio so it doesn't carry over after the NPC is destroyed
+        if (movementLoopSource != null && movementLoopSource.isPlaying)
+            movementLoopSource.Stop();
+
+        // Deregister from SirenPhaseManager to prevent stale reference after respawn
+        SirenPhaseManager.Instance?.DeregisterAngel(this);
     }
 
     // Difficulty scaling — placeholder until collectible system is wired up
@@ -283,6 +350,7 @@ public class NPCMovement : MonoBehaviour
     public void OnBlinkStarted()
     {
         if (!isActivated || isInJumpscare) return;
+        if (sirenOverride) return; // During siren phase, blinks don't freeze the angel
         agent.isStopped = true;
         agent.velocity = Vector3.zero;
         if (animator != null) animator.speed = 0f;
@@ -307,10 +375,86 @@ public class NPCMovement : MonoBehaviour
     {
         if (isInJumpscare || player == null || agent == null) return;
 
-        if (!agent.isOnNavMesh)
+        if (!agent.isOnNavMesh) return;
+
+        UpdateFlashlightExposure();
+
+        // Player is hiding in a locker — freeze in place so they can't be tracked.
+        // Siren phase overrides this: during a siren angels run freely regardless.
+        if (LockerInteraction.IsHidingInLocker && !sirenOverride)
         {
+            agent.isStopped = true;
+            agent.velocity  = Vector3.zero;
+            if (animator != null) animator.speed = 0f;
+            wasVisibleLastFrame = false;
             return;
         }
+
+        // ── SIREN PHASE ──────────────────────────────────────────────────────────
+        // Angels wander randomly around the level. If the player comes within
+        // sirenDetectionRadius AND has line of sight, the angel chases. It gives up
+        // once the player moves beyond sirenLoseRadius. No gaze/blink rules apply.
+        if (sirenOverride)
+        {
+            isActivated = true;
+            if (animator != null) animator.speed = 1f;
+
+            // Start the wander coroutine if it isn't running yet
+            if (sirenWanderCoroutine == null && !sirenChasingPlayer)
+                sirenWanderCoroutine = StartCoroutine(SirenWanderLoop());
+
+            float distToPlayer = Vector3.Distance(transform.position, player.position);
+
+            // Detect player: close enough AND line of sight
+            if (!sirenChasingPlayer && distToPlayer <= sirenDetectionRadius && CheckLineOfSight())
+            {
+                sirenChasingPlayer = true;
+                if (sirenWanderCoroutine != null)
+                {
+                    StopCoroutine(sirenWanderCoroutine);
+                    sirenWanderCoroutine = null;
+                }
+                Debug.Log("[NPCMovement] Siren: player detected — chasing.");
+            }
+
+            // Lose the player
+            if (sirenChasingPlayer && distToPlayer > sirenLoseRadius)
+            {
+                sirenChasingPlayer = false;
+                Debug.Log("[NPCMovement] Siren: lost player — resuming wander.");
+            }
+
+            if (sirenChasingPlayer)
+            {
+                agent.isStopped = false;
+                agent.SetDestination(player.position);
+            }
+            // else: SirenWanderLoop handles destinations
+
+            // Rotate to face movement direction
+            if (agent.velocity.sqrMagnitude > 0.1f)
+            {
+                Vector3 moveDir = agent.velocity;
+                moveDir.y = 0f;
+                if (moveDir.sqrMagnitude > 0.01f)
+                    transform.rotation = Quaternion.Slerp(
+                        transform.rotation,
+                        Quaternion.LookRotation(moveDir) * Quaternion.Euler(0f, modelForwardOffset, 0f),
+                        Time.deltaTime * 10f);
+            }
+
+            wasVisibleLastFrame = false;
+            return;
+        }
+
+        // Siren just ended — clean up wander state
+        if (sirenWanderCoroutine != null)
+        {
+            StopCoroutine(sirenWanderCoroutine);
+            sirenWanderCoroutine = null;
+        }
+        sirenChasingPlayer = false;
+        // ── END SIREN PHASE ─────────────────────────────────────────────────────
 
         if (isTargetingFlare && flareTarget != null)
         {
@@ -357,13 +501,17 @@ public class NPCMovement : MonoBehaviour
 
                 if (isActivated)
                 {
-                    if (isCurrentlyVisible)
+                    // sirenOverride: during a Siren Phase the angel ignores gaze entirely and runs freely
+                    if (isCurrentlyVisible && !sirenOverride)
                     {
                         agent.isStopped = true;
                         agent.velocity = Vector3.zero;
                         agent.ResetPath();
                         // Freeze animation on the current frame — creature holds its pose while observed
                         if (animator != null) animator.speed = 0f;
+
+                        // Build insanity while the player stares at the angel
+                        InsanityManager.Instance?.AddInsanity(insanityBuildRate * Time.deltaTime);
                     }
                     else
                     {
@@ -454,9 +602,124 @@ public class NPCMovement : MonoBehaviour
                 HeartbeatManager.Instance.UpdateHeartbeat(distanceToPlayer);
             }
         }
+
+        // ── Movement loop audio ──────────────────────────────────────────────────
+        // Play the looping clip whenever the NavMesh agent has actual velocity;
+        // stop it the moment the NPC halts. Works across normal and siren phases.
+        if (movementLoopSource != null)
+        {
+            bool isMoving = agent != null && agent.isOnNavMesh
+                            && agent.velocity.sqrMagnitude > 0.05f;
+
+            if (isMoving && !movementLoopSource.isPlaying)
+                movementLoopSource.Play();
+            else if (!isMoving && movementLoopSource.isPlaying)
+                movementLoopSource.Stop();
+        }
     }
 
-    // Rest of the code stays the same...
+    // ── Siren Wander Loop ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// While the siren is active and the angel hasn't spotted the player,
+    /// picks random NavMesh destinations across the level — covering ground
+    /// and searching rather than standing still.
+    /// </summary>
+    private IEnumerator SirenWanderLoop()
+    {
+        while (sirenOverride && !sirenChasingPlayer)
+        {
+            // Pick a wide random point to properly cover the level
+            Vector3 randomDir = Random.insideUnitSphere * sirenWanderRadius;
+            randomDir += transform.position;
+
+            NavMeshHit navHit;
+            if (NavMesh.SamplePosition(randomDir, out navHit, sirenWanderRadius, NavMesh.AllAreas))
+            {
+                agent.isStopped = false;
+                agent.SetDestination(navHit.position);
+            }
+
+            // Wait until we arrive at the destination (or siren ends / player detected)
+            yield return new WaitUntil(() =>
+                !sirenOverride ||
+                sirenChasingPlayer ||
+                (!agent.pathPending && agent.remainingDistance <= agent.stoppingDistance + 0.3f));
+
+            if (!sirenOverride || sirenChasingPlayer) break;
+
+            // Brief pause before picking the next destination
+            yield return new WaitForSeconds(Random.Range(0.3f, 1.0f));
+        }
+
+        sirenWanderCoroutine = null;
+    }
+
+    // ── Flashlight Exposure (Angel Respawn) ──────────────────────────────────
+
+    /// <summary>
+    /// Called by FlashlightController each frame the flashlight cone is aimed at this angel.
+    /// </summary>
+    public void NotifyFlashlightHit()
+    {
+        _flashlightHitThisFrame = true;
+    }
+
+    /// <summary>
+    /// Builds or decays flashlight exposure and fires the respawn at full charge.
+    /// Shake position is NOT applied here — it runs in LateUpdate() so the Animator
+    /// cannot overwrite it between Update and the render frame.
+    /// </summary>
+    private void UpdateFlashlightExposure()
+    {
+        if (_flashlightHitThisFrame)
+        {
+            _flashlightExposure = Mathf.Min(
+                _flashlightExposure + Time.deltaTime, flashlightHoldTimeToRespawn);
+            _flashlightHitThisFrame = false;
+        }
+        else
+        {
+            _flashlightExposure = Mathf.Max(
+                _flashlightExposure - flashlightExposureDecayRate * Time.deltaTime, 0f);
+        }
+
+        if (_flashlightExposure >= flashlightHoldTimeToRespawn)
+            TriggerFlashlightRespawn();
+    }
+
+    /// <summary>
+    /// Adds a positional jitter to the root transform each LateUpdate.
+    /// Runs after the Animator so the offset survives to the render frame.
+    /// The NavMeshAgent restores the true NavMesh position next FixedUpdate,
+    /// so the NPC never permanently drifts — the shake is purely visual.
+    /// No child references needed — works with any model hierarchy.
+    /// </summary>
+    private void LateUpdate()
+    {
+        if (_flashlightExposure <= 0f) return;
+
+        float shakeT     = _flashlightExposure / flashlightHoldTimeToRespawn;
+        float shakePower = shakeT * shakeT; // quadratic — subtle at first, violent near threshold
+        Vector3 shake    = Random.insideUnitSphere * (shakePower * flashlightMaxShakeIntensity);
+        shake.y          = 0f; // horizontal shake only
+        transform.position += shake;
+    }
+
+    private void TriggerFlashlightRespawn()
+    {
+        _flashlightExposure = 0f;
+
+        if (_spawnManager == null)
+            _spawnManager = FindObjectOfType<NPCSpawnManager>();
+
+        if (_spawnManager != null)
+            _spawnManager.RespawnSingleNPC(gameObject);
+        else
+            Debug.LogWarning("[NPCMovement] TriggerFlashlightRespawn: NPCSpawnManager not found.");
+    }
+
+    // ── Gizmos ────────────────────────────────────────────────────────────────
     private void OnDrawGizmosSelected()
     {
         if (isInJumpscare) return;
@@ -492,6 +755,9 @@ public class NPCMovement : MonoBehaviour
     {
         if (other.CompareTag("Player"))
         {
+            // Player is safely hidden in a locker — don't trigger a jumpscare
+            if (LockerInteraction.IsHidingInLocker) return;
+
             if (agent != null)
             {
                 agent.isStopped = true;
@@ -552,5 +818,26 @@ public class NPCMovement : MonoBehaviour
     {
         flareTarget = null;
         isTargetingFlare = false;
+    }
+
+    /// <summary>
+    /// Resets the NPC to its idle, deactivated state after being repositioned.
+    /// Called by NPCSpawnManager after a warp so the NPC doesn't immediately
+    /// resume chasing if it spawns within detection range of the player.
+    /// The NPC will only re-activate once the player looks at it again.
+    /// </summary>
+    public void ResetActivation()
+    {
+        isActivated         = false;
+        isCurrentlyVisible  = false;
+        wasVisibleLastFrame = false;
+        _flashlightExposure = 0f; // also clears any residual shake
+
+        if (agent != null && agent.isOnNavMesh)
+        {
+            agent.isStopped = true;
+            agent.velocity  = Vector3.zero;
+        }
+        if (animator != null) animator.speed = 0f;
     }
 }

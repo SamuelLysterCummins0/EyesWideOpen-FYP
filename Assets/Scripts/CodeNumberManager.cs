@@ -35,6 +35,8 @@ public class CodeNumberManager : MonoBehaviour
         public int[]   digits    = new int[4];
         public bool[]  collected = new bool[4];
         public int     collectedCount = 0;
+        public int     sirenTriggerSlot = -1; // Slot (0-2) whose collection triggers the siren. -1 = none.
+        public bool    sirenTriggered   = false; // Guards against triggering more than once per run.
         public Keypad  keypad;
         public List<GameObject> numbers = new List<GameObject>();
     }
@@ -50,10 +52,47 @@ public class CodeNumberManager : MonoBehaviour
     {
         if (Instance != null && Instance != this)
         {
+            Debug.LogWarning("[CodeNumberManager] Duplicate detected and destroyed. Only one CodeNumberManager should be in the scene.");
             Destroy(gameObject);
             return;
         }
         Instance = this;
+        Debug.Log("[CodeNumberManager] Singleton instance set.");
+    }
+
+    private void OnDestroy()
+    {
+        if (Instance != this) return;
+        Instance = null;
+
+        // Application.isPlaying stays true during play-mode teardown, so we can't
+        // use it alone to distinguish "mid-session destroy" from "normal exit".
+        // isQuitting is set in OnApplicationQuit (called before OnDestroy on exit).
+        if (Application.isPlaying && !isQuitting)
+            Debug.LogError("[CodeNumberManager] DESTROYED DURING PLAY — Instance will become null! Check if its parent GameObject is being destroyed mid-session.");
+    }
+
+    private bool isQuitting = false;
+    private void OnApplicationQuit() { isQuitting = true; }
+
+    // ── Public Query API ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns the world positions of every spawned CodeNumber object across all levels.
+    /// Used by LockerSetup to avoid placing lockers on tiles that already have digits on them.
+    /// </summary>
+    public List<Vector3> GetSpawnedPositions()
+    {
+        List<Vector3> positions = new List<Vector3>();
+        foreach (var kvp in levelStates)
+        {
+            foreach (GameObject obj in kvp.Value.numbers)
+            {
+                if (obj != null)
+                    positions.Add(obj.transform.position);
+            }
+        }
+        return positions;
     }
 
     // ── Called by ProceduralDungeonGenerator ─────────────────────────────────
@@ -71,6 +110,11 @@ public class CodeNumberManager : MonoBehaviour
         // Create (or overwrite) state for this level.
         LevelData data = new LevelData();
         levelStates[levelIndex] = data;
+
+        // Pick one of slots 0-2 to trigger the siren when collected.
+        // Slot 3 (computer terminal) is never chosen.
+        data.sirenTriggerSlot = Random.Range(0, 3);
+        Debug.Log($"[CodeNumberManager] Level {levelIndex}: siren trigger slot = {data.sirenTriggerSlot}");
 
         // Generate 4 random digits (0-9, repeats allowed).
         for (int i = 0; i < 4; i++)
@@ -298,7 +342,7 @@ public class CodeNumberManager : MonoBehaviour
         data.collected[orderIndex] = true;
         data.collectedCount++;
 
-        Debug.Log($"[CodeNumberManager] Level {levelIndex} digit {orderIndex + 1}/4 collected: {digit}");
+        Debug.Log($"[CodeNumberManager] Level {levelIndex}: collected slot {orderIndex + 1} (value={digit}), total collected = {data.collectedCount}/4");
 
         // Re-find HUD every time in case it wasn't assigned during InitializeForLevel
         // (e.g. when called from MazeMinigame after the level was already set up)
@@ -313,6 +357,25 @@ public class CodeNumberManager : MonoBehaviour
             Debug.LogWarning("[CodeNumberManager] CodeNumberHUD not found — digit collected but HUD not updated.");
         }
 
+        // Trigger siren phase if this is the designated trigger slot for this level.
+        if (!data.sirenTriggered && orderIndex == data.sirenTriggerSlot && SirenPhaseManager.Instance != null)
+        {
+            data.sirenTriggered = true;
+            SirenPhaseManager.Instance.TriggerOnCodeCollected(levelIndex);
+            Debug.Log($"[CodeNumberManager] Level {levelIndex}: siren triggered by designated slot {orderIndex}.");
+        }
+
+        // Mandatory fallback: if 3 digits have been collected and the siren still hasn't
+        // fired (e.g. the designated slot's number was never spawned), trigger it now so
+        // the siren phase is guaranteed to happen before the level is completed.
+        if (!data.sirenTriggered && data.collectedCount >= 3
+            && SirenPhaseManager.Instance != null)
+        {
+            data.sirenTriggered = true;
+            SirenPhaseManager.Instance.TriggerOnCodeCollected(levelIndex);
+            Debug.Log($"[CodeNumberManager] Level {levelIndex}: siren triggered by mandatory fallback (3 digits collected).");
+        }
+
         if (data.collectedCount >= 4)
         {
             if (data.keypad != null) data.keypad.SetCodesCollected(true);
@@ -322,6 +385,81 @@ public class CodeNumberManager : MonoBehaviour
     }
 
     // ── Utility ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Called by GameManager when the player respawns.
+    /// Re-enables all collected wall numbers for the current level and clears
+    /// the collection state so the player must gather them again.
+    /// The level layout, digit values, and number positions are preserved.
+    /// </summary>
+    public void ResetCollectionForLevel(int levelIndex)
+    {
+        Debug.Log($"[CodeNumberManager] ResetCollectionForLevel({levelIndex}) called.");
+
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data))
+        {
+            Debug.LogWarning($"[CodeNumberManager] ResetCollectionForLevel: no level state found for level {levelIndex}. Was InitializeForLevel called?");
+            return;
+        }
+
+        Debug.Log($"[CodeNumberManager] Level {levelIndex} has {data.numbers.Count} number objects tracked.");
+
+        // Re-enable every physical CodeNumber in this level.
+        int resetCount = 0;
+        int nullCount  = 0;
+        foreach (GameObject obj in data.numbers)
+        {
+            if (obj == null)
+            {
+                nullCount++;
+                continue;
+            }
+            CodeNumber cn = obj.GetComponent<CodeNumber>();
+            if (cn != null)
+            {
+                cn.ResetForRespawn();
+                resetCount++;
+            }
+            else
+            {
+                obj.SetActive(true);
+                resetCount++;
+            }
+        }
+
+        if (nullCount > 0)
+            Debug.LogWarning($"[CodeNumberManager] {nullCount} number object(s) were null (destroyed). " +
+                             "This means they were created with old code that called Destroy() instead of SetActive(false). " +
+                             "EXIT AND RE-ENTER PLAY MODE to fix — the new code uses SetActive so references persist.");
+        else
+            Debug.Log($"[CodeNumberManager] Reset {resetCount} CodeNumber objects on level {levelIndex}.");
+
+        // Clear collection tracking (digits 0-3).
+        for (int i = 0; i < 4; i++)
+            data.collected[i] = false;
+        data.collectedCount  = 0;
+        data.sirenTriggered  = false;
+
+        // Re-randomise siren trigger slot for the new round (never slot 3 = computer).
+        data.sirenTriggerSlot = Random.Range(0, 3);
+        Debug.Log($"[CodeNumberManager] Level {levelIndex}: siren trigger slot re-randomised to {data.sirenTriggerSlot}");
+
+        // Lock the keypad again.
+        if (data.keypad != null)
+            data.keypad.SetCodesCollected(false);
+
+        // Reset HUD to empty.
+        if (hud == null) hud = FindObjectOfType<CodeNumberHUD>(true);
+        if (hud != null)
+        {
+            hud.ResetDisplay();
+            Debug.Log("[CodeNumberManager] HUD reset.");
+        }
+        else
+        {
+            Debug.LogWarning("[CodeNumberManager] CodeNumberHUD not found — HUD not reset!");
+        }
+    }
 
     // Called by GameManager.SetCurrentLevel() when the player descends to a new level.
     // Resets the HUD to reflect the new level's collection state (empty on first visit,

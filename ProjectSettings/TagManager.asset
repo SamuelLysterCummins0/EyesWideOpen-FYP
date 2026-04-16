@@ -6,6 +6,7 @@ TagManager:
   tags:
   - CinemachineTarget
   - Global Resource
+  - door
   layers:
   - Default
   - TransparentFX

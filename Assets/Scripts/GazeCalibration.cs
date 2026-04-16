@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.Events;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,6 +9,10 @@ public class GazeCalibration : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private GazeDetector gazeDetector;
+
+    [Header("Events")]
+    /// <summary>Fired when the 9-point calibration sequence completes successfully.</summary>
+    public UnityEvent OnCalibrationComplete = new UnityEvent();
 
     [Header("UI")]
     [SerializeField] private GameObject calibrationPanel;
@@ -140,13 +145,13 @@ public class GazeCalibration : MonoBehaviour
 
         instructionText.text = $"<size=36><b>{pointName}</b></size>\n\n" +
                               $"Point {pointIndex + 1} of {screenPoints.Length}\n\n" +
-                              $"Look at the dot with your eyes\n" +
+                              $"Look at the dot using your head and eyes\n" +
                               $"Press <b>SPACEBAR</b> when ready";
 
         isWaitingForConfirmation = true;
         while (!Input.GetKeyDown(KeyCode.Space))
         {
-            if (!gazeDetector.IsTracking)
+            if (!gazeDetector.IsFaceDetected)
             {
                 instructionText.text = "<color=red>FACE NOT DETECTED</color>\n\n" +
                                       "Make sure your face is visible to the camera";
@@ -167,7 +172,7 @@ public class GazeCalibration : MonoBehaviour
 
         while (timer < collectionTime && samples.Count < samplesPerPoint)
         {
-            if (gazeDetector.IsTracking)
+            if (gazeDetector.IsFaceDetected)
             {
                 samples.Add(gazeDetector.GazeNormalized);
             }
@@ -270,12 +275,16 @@ public class GazeCalibration : MonoBehaviour
 
         isCalibrating = false;
         if (calibrationPanel != null)
-        {
             calibrationPanel.SetActive(false);
-        }
+
+        // targetDot is parented to the canvas root (sibling of the panel), so
+        // it must be hidden explicitly — panel.SetActive(false) doesn't reach it.
+        if (targetDot != null)
+            targetDot.gameObject.SetActive(false);
 
         gazeDetector.SetDebugCursorVisible(true);
 
+        OnCalibrationComplete?.Invoke();
         Debug.Log("=== CALIBRATION COMPLETE ===");
     }
 

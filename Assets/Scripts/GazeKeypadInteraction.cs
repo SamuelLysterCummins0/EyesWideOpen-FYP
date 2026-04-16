@@ -50,11 +50,23 @@ namespace NavKeypad
             cameraTransform = playerCamera.transform;
 
             keypad = GetComponent<Keypad>();
-            door = transform.root.GetComponentInChildren<SlidingDoor>();
+
+            // Search within the stairway prefab's own hierarchy rather than transform.root.
+            // transform.root escapes the prefab boundary — when multiple stairways share the
+            // same dungeon root (ProceduralDungeonGenerator), transform.root.GetComponentInChildren
+            // always returns the first SlidingDoor (Level 0's), breaking Level 1+ keypads.
+            // Walking upward in bounded steps stops at the stairway prefab root and finds
+            // the correct SlidingDoor for THIS keypad specifically.
+            door = FindDoorWithinPrefab();
 
             if (door != null)
             {
                 keypad.OnAccessGranted.AddListener(OpenDoor);
+            }
+            else
+            {
+                Debug.LogWarning($"[GazeKeypadInteraction] No SlidingDoor found within stairway prefab for '{name}'. " +
+                                 "Ensure SlidingDoor is in the same prefab hierarchy as this keypad.");
             }
 
             Transform camPos = transform.Find("CameraPosition");
@@ -255,6 +267,26 @@ namespace NavKeypad
             }
 
             Invoke(nameof(EndInteraction), 1f);
+        }
+
+        /// <summary>
+        /// Finds the SlidingDoor within the stairway prefab that contains this keypad.
+        /// Walks upward from this component's transform, checking each ancestor's subtree,
+        /// and stops as soon as a door is found. This is bounded to at most 5 hops so it
+        /// never escapes the stairway prefab and accidentally picks up a door from another
+        /// stairway sharing the same dungeon root.
+        /// </summary>
+        private SlidingDoor FindDoorWithinPrefab()
+        {
+            Transform t = transform;
+            for (int i = 0; i < 5; i++)
+            {
+                SlidingDoor d = t.GetComponentInChildren<SlidingDoor>(true);
+                if (d != null) return d;
+                if (t.parent == null) break;
+                t = t.parent;
+            }
+            return null;
         }
 
         private void OnDrawGizmosSelected()

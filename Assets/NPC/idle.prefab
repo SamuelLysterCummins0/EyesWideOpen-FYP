@@ -131,7 +131,7 @@ NavMeshAgent:
   m_Enabled: 1
   m_AgentTypeID: 0
   m_Radius: 0.5
-  m_Speed: 3.5
+  m_Speed: 5
   m_Acceleration: 8
   avoidancePriority: 50
   m_AngularSpeed: 120
@@ -166,12 +166,57 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 64
   fieldOfViewAngle: 100
+  sirenOverride: 0
   raycastOffset: 1
   raycastCount: 5
   cornerCheckDistance: 1
   cornerCheckRays: 8
+  wallStopBuffer: 1.2
+  wallRetreatDistance: 0.8
   speedIncreasePerPart: 1.5
   detectionRangeIncreasePerPart: 4
+  animator: {fileID: 0}
+  modelForwardOffset: 0
+  blinkAnimFrameSkip: 8
+  insanityBuildRate: 2
+  sirenDetectionRadius: 10
+  sirenLoseRadius: 16
+  sirenWanderRadius: 20
+  blinkDetector: {fileID: 0}
+  vignetteController: {fileID: 0}
+  blinkJumpDistance: 3
+  maxBlinkJumpDistance: 5
+  distanceScaleCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.5
+      inSlope: 0
+      outSlope: 0.016666668
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    - serializedVersion: 3
+      time: 30
+      value: 1
+      inSlope: 0.016666668
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  blinkMovementSound: {fileID: 0}
+  blinkMovementVolume: 0.3
+  movementLoopClip: {fileID: 0}
+  movementLoopVolume: 0.6
+  flashlightHoldTimeToRespawn: 5
+  flashlightExposureDecayRate: 1
+  flashlightMaxShakeIntensity: 0.3
 --- !u!136 &8175419901523278339
 CapsuleCollider:
   m_ObjectHideFlags: 0

@@ -22,15 +22,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: afb2d4d28cc98a54b84dee6a6c247db5, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -0.37415314
+      value: 21.662746
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: afb2d4d28cc98a54b84dee6a6c247db5, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.12500024
+      value: -0.0000009536743
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: afb2d4d28cc98a54b84dee6a6c247db5, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 2.89976
+      value: 5.425606
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: afb2d4d28cc98a54b84dee6a6c247db5, type: 3}
       propertyPath: m_LocalRotation.w
@@ -140,16 +140,22 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 64
   fieldOfViewAngle: 100
+  sirenOverride: 0
   raycastOffset: 1
   raycastCount: 5
   cornerCheckDistance: 1
   cornerCheckRays: 8
   wallStopBuffer: 1.2
+  wallRetreatDistance: 0.8
   speedIncreasePerPart: 1.5
   detectionRangeIncreasePerPart: 4
   animator: {fileID: 6201259203214153508}
   modelForwardOffset: 0
   blinkAnimFrameSkip: 20
+  insanityBuildRate: 2.5
+  sirenDetectionRadius: 10
+  sirenLoseRadius: 16
+  sirenWanderRadius: 20
   blinkDetector: {fileID: 0}
   vignetteController: {fileID: 0}
   blinkJumpDistance: 5
@@ -180,6 +186,11 @@ MonoBehaviour:
     m_RotationOrder: 4
   blinkMovementSound: {fileID: 0}
   blinkMovementVolume: 0.3
+  movementLoopClip: {fileID: 0}
+  movementLoopVolume: 0.6
+  flashlightHoldTimeToRespawn: 3.5
+  flashlightExposureDecayRate: 1
+  flashlightMaxShakeIntensity: 0.15
 --- !u!136 &-9083347577661432933
 CapsuleCollider:
   m_ObjectHideFlags: 0

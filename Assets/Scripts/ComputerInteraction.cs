@@ -288,6 +288,23 @@ public class ComputerInteraction : MonoBehaviour
         Invoke(nameof(EndInteraction), 1.5f);
     }
 
+    /// <summary>
+    /// Called by GameManager when the player respawns.
+    /// Unlocks this terminal so the player can complete the maze again.
+    /// The saved maze layout is preserved so the layout stays the same.
+    /// </summary>
+    public void ResetForRespawn()
+    {
+        // Cancel any delayed EndInteraction from OnMazeSolvedInternal.
+        CancelInvoke(nameof(EndInteraction));
+
+        if (isInteracting)
+            EndInteraction();
+
+        mazeCompleted = false;
+        ResetGazeState();
+    }
+
     // Deep-copies a 2-D bool array so each ComputerInteraction holds its own independent layout
     private static bool[,] CopyBoolArray(bool[,] src)
     {

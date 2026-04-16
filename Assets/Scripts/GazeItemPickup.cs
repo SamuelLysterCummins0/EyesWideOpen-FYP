@@ -41,6 +41,11 @@ public class GazeItemPickup : MonoBehaviour
     private BlinkDetector blinkDetector;
     private Camera        playerCamera;
 
+    // The GameObject to destroy on pickup. Defaults to this object.
+    // Use SetPickupRoot() at spawn time when this component lives on a child
+    // rather than the prefab root (so the whole prefab is destroyed, not just the child).
+    private GameObject pickupRoot;
+
     // Per-renderer material state (instance copies so other objects are unaffected)
     private Renderer[] itemRenderers;
     private Color[]    originalEmission;
@@ -219,24 +224,34 @@ public class GazeItemPickup : MonoBehaviour
 
     private void PickUp()
     {
-        if (item == null) return;
-
         ResetGlow();
         ShowPrompt(false);
 
-        if (item.itemType == Item.ItemType.Goggles)
+        // item can be null if the Item ScriptableObject was removed — guard per block
+        // but always destroy so the pickup object never gets stuck in the world.
+        if (item != null && item.itemType == Item.ItemType.Goggles)
         {
             if (GoggleController.Instance != null)
                 GoggleController.Instance.UnlockGoggles();
-            if (InstructionUI.Instance != null)
-                InstructionUI.Instance.ShowPanel(item.itemType);
+            FlashlightHUD.Instance?.ShowNotification("Blink twice fast to put on / off goggles", 6f);
         }
 
-        if (InventoryManager.Instance != null)
-            InventoryManager.Instance.Add(item);
+        // Goggles are handled above via GoggleController — skip inventory for them.
+        // For other items, attempt to add but never let an inventory exception block the destroy.
+        if (item != null && item.itemType != Item.ItemType.Goggles && InventoryManager.Instance != null)
+        {
+            try { InventoryManager.Instance.Add(item); }
+            catch (System.Exception e) { Debug.LogWarning($"[GazeItemPickup] InventoryManager.Add failed: {e.Message}"); }
+        }
 
-        Destroy(gameObject);
+        Destroy(pickupRoot != null ? pickupRoot : gameObject);
     }
+
+    /// <summary>
+    /// Called by the spawner (e.g. HiddenRoomSetup) when this component is on a child
+    /// of the prefab root. Ensures the whole prefab is destroyed on pickup, not just the child.
+    /// </summary>
+    public void SetPickupRoot(GameObject root) => pickupRoot = root;
 
     // ── Prompt UI ─────────────────────────────────────────────────────────────
 

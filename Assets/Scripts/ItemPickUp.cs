@@ -48,31 +48,39 @@ public class ItemPickUp : MonoBehaviour
 
     void PickUp()
     {
-        if (InventoryManager.Instance != null)
+        // Handle item-specific side-effects first
+        if (Item.itemType == Item.ItemType.Goggles)
         {
-            if (Item.itemType == Item.ItemType.Mask && !hasShownMaskInstructions)
-            {
-                InstructionUI.Instance.ShowPanel(Item.itemType);
-                hasShownMaskInstructions = true;
-            }
-            else if (Item.itemType == Item.ItemType.Flare && !hasShownFlareInstructions)
-            {
-                InstructionUI.Instance.ShowPanel(Item.itemType);
-                hasShownFlareInstructions = true;
-            }
-            else if (Item.itemType == Item.ItemType.Consumable && !hasShownConsumableInstructions)
-            {
-                InstructionUI.Instance.ShowPanel(Item.itemType);
-                hasShownConsumableInstructions = true;
-            }
-            else if (Item.itemType == Item.ItemType.Goggles && !hasShownGogglesInstructions)
+            if (GoggleController.Instance != null)
+                GoggleController.Instance.UnlockGoggles();
+            if (!hasShownGogglesInstructions && InstructionUI.Instance != null)
             {
                 InstructionUI.Instance.ShowPanel(Item.itemType);
                 hasShownGogglesInstructions = true;
             }
+        }
+        else if (InventoryManager.Instance != null)
+        {
+            if (Item.itemType == Item.ItemType.Mask && !hasShownMaskInstructions)
+            {
+                InstructionUI.Instance?.ShowPanel(Item.itemType);
+                hasShownMaskInstructions = true;
+            }
+            else if (Item.itemType == Item.ItemType.Flare && !hasShownFlareInstructions)
+            {
+                InstructionUI.Instance?.ShowPanel(Item.itemType);
+                hasShownFlareInstructions = true;
+            }
+            else if (Item.itemType == Item.ItemType.Consumable && !hasShownConsumableInstructions)
+            {
+                InstructionUI.Instance?.ShowPanel(Item.itemType);
+                hasShownConsumableInstructions = true;
+            }
 
             InventoryManager.Instance.Add(Item);
-            Destroy(gameObject);
         }
+
+        // Always destroy — never leave the pickup in the world
+        Destroy(gameObject);
     }
 }

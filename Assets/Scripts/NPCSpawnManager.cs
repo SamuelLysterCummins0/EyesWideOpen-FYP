@@ -32,6 +32,18 @@ public class NPCSpawnManager : MonoBehaviour
     private Camera playerCamera;
     private SafeRoomSetup safeRoomSetup;
     private SpawnRoomSetup spawnRoomSetup;
+    private ComputerRoomSetup computerRoomSetup;
+    private HiddenRoomSetup hiddenRoomSetup;
+    private DetonationRoomSetup detonationRoomSetup;
+    private DungeonLevelVisibility dungeonLevelVisibility;
+
+    // Locker exclusion zones — registered by LockerSetup during dungeon generation
+    private readonly List<(Vector3 center, float radius)> lockerExclusions =
+        new List<(Vector3 center, float radius)>();
+
+    /// <summary>Called by LockerSetup for each spawned locker to prevent NPC spawning on top of them.</summary>
+    public void RegisterLockerCenter(Vector3 center, float radius) =>
+        lockerExclusions.Add((center, radius));
 
     void OnDrawGizmos()
     {
@@ -55,8 +67,12 @@ public class NPCSpawnManager : MonoBehaviour
         if (player == null)
             player = GameObject.FindGameObjectWithTag("Player")?.transform;
 
-        safeRoomSetup  = FindObjectOfType<SafeRoomSetup>();
-        spawnRoomSetup = FindObjectOfType<SpawnRoomSetup>();
+        safeRoomSetup         = FindObjectOfType<SafeRoomSetup>();
+        spawnRoomSetup        = FindObjectOfType<SpawnRoomSetup>();
+        computerRoomSetup     = FindObjectOfType<ComputerRoomSetup>();
+        hiddenRoomSetup       = HiddenRoomSetup.Instance != null ? HiddenRoomSetup.Instance : FindObjectOfType<HiddenRoomSetup>();
+        detonationRoomSetup   = DetonationRoomSetup.Instance != null ? DetonationRoomSetup.Instance : FindObjectOfType<DetonationRoomSetup>();
+        dungeonLevelVisibility = FindObjectOfType<DungeonLevelVisibility>();
 
         Debug.Log($"{name}: NPCSpawnManager started with {spawnZones.Count} spawn zones");
 
@@ -91,7 +107,9 @@ public class NPCSpawnManager : MonoBehaviour
         Vector3 spawnPosition = GetValidSpawnPosition();
         if (spawnPosition != Vector3.zero)
         {
-            GameObject npc = Instantiate(npcPrefab, spawnPosition, Quaternion.identity);
+            Quaternion randomRot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            GameObject npc = Instantiate(npcPrefab, spawnPosition, randomRot);
+            ParentToLevel(npc, spawnPosition);
             SetupNPC(npc);
             activeNPCs.Add(npc);
         }
@@ -103,8 +121,27 @@ public class NPCSpawnManager : MonoBehaviour
         if (spawnPosition != Vector3.zero)
         {
             GameObject apple = Instantiate(applePrefab, spawnPosition, Quaternion.identity);
+            ParentToLevel(apple, spawnPosition);
             activeApples.Add(apple);
         }
+    }
+
+    /// <summary>
+    /// Parents a spawned object to the dungeon level parent that matches its Y position.
+    /// This ensures it is deactivated/activated with the level when it is hidden or shown,
+    /// preventing objects and NPCs from falling or persisting when a level is toggled off.
+    /// </summary>
+    private void ParentToLevel(GameObject obj, Vector3 worldPosition)
+    {
+        if (dungeonLevelVisibility == null) return;
+
+        float lh = dungeonLevelVisibility.LevelHeight;
+        if (lh <= 0f) return;
+
+        int levelIndex = Mathf.Max(0, Mathf.RoundToInt(-worldPosition.y / lh));
+        GameObject levelParent = dungeonLevelVisibility.GetLevelParent(levelIndex);
+        if (levelParent != null)
+            obj.transform.SetParent(levelParent.transform, worldPositionStays: true);
     }
 
     private void SetupNPC(GameObject npc)
@@ -211,34 +248,42 @@ public class NPCSpawnManager : MonoBehaviour
             && IsFarEnoughFromSafeRooms(position);
     }
 
-    // Checks that the position is outside all safe room and spawn room exclusion zones.
-    // This prevents NPCs from appearing inside the rooms that are meant to be safe.
+    // Checks that the position is outside all protected room exclusion zones
+    // (safe rooms, spawn rooms, computer rooms, and hidden rooms).
     private bool IsFarEnoughFromSafeRooms(Vector3 position)
     {
         if (safeRoomSetup != null)
-        {
             foreach (Vector3 center in safeRoomSetup.GetSafeRoomCenters())
-            {
-                if (Vector3.Distance(position, center) < safeRoomExclusionRadius)
-                    return false;
-            }
-        }
+                if (Vector3.Distance(position, center) < safeRoomExclusionRadius) return false;
 
         if (spawnRoomSetup != null)
-        {
             foreach (Vector3 center in spawnRoomSetup.GetSpawnRoomPositions())
-            {
-                if (Vector3.Distance(position, center) < safeRoomExclusionRadius)
-                    return false;
-            }
-        }
+                if (Vector3.Distance(position, center) < safeRoomExclusionRadius) return false;
+
+        if (computerRoomSetup != null)
+            foreach (Vector3 center in computerRoomSetup.GetRoomCenters())
+                if (Vector3.Distance(position, center) < safeRoomExclusionRadius) return false;
+
+        if (hiddenRoomSetup != null)
+            foreach (Vector3 center in hiddenRoomSetup.GetRoomCenters())
+                if (Vector3.Distance(position, center) < safeRoomExclusionRadius) return false;
+
+        // Detonation room exclusion — uses a larger radius since the room occupies 2×2 tiles
+        if (detonationRoomSetup != null)
+            foreach (Vector3 center in detonationRoomSetup.GetRoomCenters())
+                if (Vector3.Distance(position, center) < safeRoomExclusionRadius * 1.5f) return false;
+
+        // Locker exclusion zones
+        foreach (var (center, radius) in lockerExclusions)
+            if (Vector3.Distance(position, center) < radius) return false;
 
         return true;
     }
 
     private bool IsVisibleToPlayer(Vector3 position)
     {
-        if (playerCamera == null) return false;
+        // Null camera or disabled camera (e.g. player inside a locker) = not visible
+        if (playerCamera == null || !playerCamera.enabled) return false;
 
         Vector3 directionToPlayer = (player.position - position).normalized;
         float angle = Vector3.Angle(-directionToPlayer, playerCamera.transform.forward);
@@ -309,5 +354,122 @@ public class NPCSpawnManager : MonoBehaviour
         ClearSpawns();
         if (spawnWaves != null && spawnWaves.Count > 0)
             SpawnWaveOfNPCs(0);
+    }
+
+    // Repositions active NPCs that are within <radius> of <center> and are not
+    // currently visible to the player. Uses the same valid-spawn logic as RespawnAll.
+    // Called by RoomNPCShuffle after the player has been inside a safe/spawn room
+    // with all doors closed for long enough.
+    public void ShuffleNearbyNPCs(Vector3 center, float radius)
+    {
+        // Snapshot candidates so we never modify activeNPCs while iterating it.
+        List<GameObject> candidates = new List<GameObject>();
+        foreach (GameObject npc in activeNPCs)
+        {
+            if (npc != null && Vector3.Distance(npc.transform.position, center) <= radius)
+                candidates.Add(npc);
+        }
+
+        int moved = 0;
+        foreach (GameObject npc in candidates)
+        {
+            if (npc == null) continue;
+
+            // Extra safety: never teleport an NPC the player can currently see,
+            // even if a door is open or the sight-line somehow passes through.
+            if (IsVisibleToPlayer(npc.transform.position)) continue;
+
+            Vector3 newPos = GetValidSpawnPosition();
+            if (newPos == Vector3.zero) continue;
+
+            NavMeshAgent agent = npc.GetComponent<NavMeshAgent>();
+            if (agent != null && agent.isActiveAndEnabled)
+            {
+                // Warp is the correct NavMeshAgent teleport — it re-samples the
+                // NavMesh at the destination and updates the agent's internal state.
+                agent.Warp(newPos);
+            }
+            else
+            {
+                npc.transform.position = newPos;
+            }
+
+            // Deactivate the NPC so it doesn't immediately chase if it spawned
+            // within detection range. It will re-activate when the player looks at it.
+            npc.GetComponent<NPCMovement>()?.ResetActivation();
+
+            moved++;
+        }
+
+        if (moved > 0)
+        {
+            Debug.Log($"[NPCSpawnManager] ShuffleNearbyNPCs: repositioned {moved} NPC(s) near {center}.");
+
+            // After warping, check if ANY remaining NPC is still within its detection range
+            // of the player. If none are, nobody will call UpdateHeartbeat() next frame, so the
+            // audio will permanently stick at the last high pitch/volume — reset it explicitly.
+            // (This mirrors what GameManager.Respawn() does before re-spawning all NPCs.)
+            bool anyStillClose = false;
+            foreach (GameObject npc in activeNPCs)
+            {
+                if (npc == null) continue;
+                NPCMovement movement = npc.GetComponent<NPCMovement>();
+                if (movement == null) continue;
+                // Use the NPC's current position — warped NPCs are already at their new spots.
+                if (Vector3.Distance(npc.transform.position, player.position) <= movement.detectionRange)
+                {
+                    anyStillClose = true;
+                    break;
+                }
+            }
+
+            if (!anyStillClose && HeartbeatManager.Instance != null)
+                HeartbeatManager.Instance.ResetHeartbeat();
+        }
+    }
+
+    /// <summary>
+    /// Repositions a single NPC (the weeping angel) to a new valid spawn position.
+    /// Called by NPCMovement when the player holds the flashlight on the angel long enough.
+    /// Uses the same valid-spawn logic as RespawnAll / ShuffleNearbyNPCs.
+    /// </summary>
+    public void RespawnSingleNPC(GameObject npc)
+    {
+        if (npc == null) return;
+
+        Vector3 newPos = GetValidSpawnPosition();
+        if (newPos == Vector3.zero)
+        {
+            Debug.LogWarning("[NPCSpawnManager] RespawnSingleNPC: no valid spawn position found.");
+            return;
+        }
+
+        NavMeshAgent agent = npc.GetComponent<NavMeshAgent>();
+        if (agent != null && agent.isActiveAndEnabled)
+            agent.Warp(newPos);
+        else
+            npc.transform.position = newPos;
+
+        // Deactivate so the angel doesn't immediately chase if it landed near the player.
+        npc.GetComponent<NPCMovement>()?.ResetActivation();
+
+        Debug.Log($"[NPCSpawnManager] RespawnSingleNPC: angel repositioned to {newPos}.");
+
+        // Reset heartbeat if no NPC remains close enough to the player to drive it.
+        bool anyStillClose = false;
+        foreach (GameObject activeNpc in activeNPCs)
+        {
+            if (activeNpc == null) continue;
+            NPCMovement movement = activeNpc.GetComponent<NPCMovement>();
+            if (movement == null) continue;
+            if (Vector3.Distance(activeNpc.transform.position, player.position) <= movement.detectionRange)
+            {
+                anyStillClose = true;
+                break;
+            }
+        }
+
+        if (!anyStillClose && HeartbeatManager.Instance != null)
+            HeartbeatManager.Instance.ResetHeartbeat();
     }
 }
