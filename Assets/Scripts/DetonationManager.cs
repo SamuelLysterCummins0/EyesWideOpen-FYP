@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
@@ -98,6 +99,15 @@ public class DetonationManager : MonoBehaviour
 
     private AudioSource alarmSource;
 
+    // ── Elevator Warning UI ────────────────────────────────────────────────────
+
+    [Tooltip("How long (seconds) the 'Find the elevator' warning stays on screen.")]
+    [SerializeField] private float warningDuration = 5f;
+
+    private GameObject    warningCanvas;
+    private TMP_Text      warningText;
+    private Coroutine     warningCoroutine;
+
     // ── Unity ──────────────────────────────────────────────────────────────────
 
     private void Awake()
@@ -110,6 +120,7 @@ public class DetonationManager : MonoBehaviour
     {
         BuildAlarmAudio();
         EnsureVolumeBuilt();
+        BuildWarningUI();
 
         if (countdownContainer != null)
             countdownContainer.SetActive(false);
@@ -120,6 +131,8 @@ public class DetonationManager : MonoBehaviour
         if (Instance == this) Instance = null;
         if (detonationVolume != null)
             Destroy(detonationVolume.gameObject);
+        if (warningCanvas != null)
+            Destroy(warningCanvas);
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
@@ -163,6 +176,10 @@ public class DetonationManager : MonoBehaviour
             alarmSource.volume = alarmVolume;
             alarmSource.Play();
         }
+
+        // Spawn the escape elevator on level 0 and show the warning message
+        ElevatorSetup.Instance?.SpawnElevator();
+        ShowElevatorWarning();
 
         // Start countdown
         if (detonationCoroutine != null) StopCoroutine(detonationCoroutine);
@@ -379,5 +396,85 @@ public class DetonationManager : MonoBehaviour
         alarmSource.spatialBlend = 0f; // 2D — heard everywhere
         alarmSource.volume       = alarmVolume;
         alarmSource.playOnAwake  = false;
+    }
+
+    // ── Elevator Warning UI ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds an invisible screen-space canvas containing the red warning text.
+    /// Hidden by default; shown only when the detonation button is pressed.
+    /// </summary>
+    private void BuildWarningUI()
+    {
+        warningCanvas = new GameObject("DetonationWarningCanvas");
+        Canvas canvas = warningCanvas.AddComponent<Canvas>();
+        canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 150;
+        warningCanvas.AddComponent<CanvasScaler>();
+        warningCanvas.AddComponent<GraphicRaycaster>();
+
+        GameObject textObj = new GameObject("WarningText");
+        textObj.transform.SetParent(warningCanvas.transform, false);
+
+        warningText               = textObj.AddComponent<TMP_Text>();
+        warningText.text          = "Find the elevator on the first floor before detonation";
+        warningText.color         = Color.red;
+        warningText.fontSize      = 40;
+        warningText.alignment     = TextAlignmentOptions.Center;
+        warningText.fontStyle     = FontStyles.Bold;
+
+        // Centre on screen
+        RectTransform rect  = textObj.GetComponent<RectTransform>();
+        rect.anchorMin        = new Vector2(0.1f, 0.4f);
+        rect.anchorMax        = new Vector2(0.9f, 0.6f);
+        rect.offsetMin        = Vector2.zero;
+        rect.offsetMax        = Vector2.zero;
+
+        warningCanvas.SetActive(false);
+    }
+
+    /// <summary>
+    /// Flashes the elevator warning message on screen for warningDuration seconds,
+    /// then hides it. Uses a fade-out at the end for a polished feel.
+    /// </summary>
+    private void ShowElevatorWarning()
+    {
+        if (warningCanvas == null) return;
+        if (warningCoroutine != null) StopCoroutine(warningCoroutine);
+        warningCoroutine = StartCoroutine(WarningSequence());
+    }
+
+    private IEnumerator WarningSequence()
+    {
+        // Reset alpha and show
+        if (warningText != null)
+        {
+            Color c = warningText.color;
+            c.a = 1f;
+            warningText.color = c;
+        }
+        warningCanvas.SetActive(true);
+
+        // Hold for warningDuration then fade out over 0.5 s
+        float holdTime   = Mathf.Max(0f, warningDuration - 0.5f);
+        float fadeTime   = 0.5f;
+
+        yield return new WaitForSeconds(holdTime);
+
+        float elapsed = 0f;
+        while (elapsed < fadeTime)
+        {
+            elapsed += Time.deltaTime;
+            if (warningText != null)
+            {
+                Color c = warningText.color;
+                c.a = Mathf.Lerp(1f, 0f, elapsed / fadeTime);
+                warningText.color = c;
+            }
+            yield return null;
+        }
+
+        warningCanvas.SetActive(false);
+        warningCoroutine = null;
     }
 }

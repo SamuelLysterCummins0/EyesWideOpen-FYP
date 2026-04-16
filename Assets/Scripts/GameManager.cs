@@ -23,9 +23,8 @@ public class GameManager : MonoBehaviour
     private AudioSource ambientSource;
 
     [Header("Victory")]
-    [Tooltip("UI panel shown when the player escapes before the detonation timer runs out. " +
-             "Design it similarly to deathScreen — a full-screen overlay with an escape message.")]
-    public GameObject victoryScreen;
+    [Tooltip("WinScreen component on the Victory Canvas. Handles fade-to-black and 'You Escaped' text.")]
+    public WinScreen winScreen;
 
     [Header("State")]
     private int currentLevel = 0;
@@ -168,12 +167,20 @@ public class GameManager : MonoBehaviour
         DetonationManager.Instance?.OnVictory();
         ClearDetonationRespawn();
 
-        if (victoryScreen != null)
-            victoryScreen.SetActive(true);
+        // Disable player movement immediately so they can't wander during the win screen
+        if (playerController != null)
+            playerController.enabled = false;
 
-        Time.timeScale = 0f;
-        Cursor.visible = true;
-        Cursor.lockState = CursorLockMode.None;
+        // WinScreen fades to black, shows "You Escaped", then freezes time and unlocks cursor
+        if (winScreen != null)
+            winScreen.ShowVictory();
+        else
+        {
+            // Fallback if WinScreen is not assigned
+            Time.timeScale = 0f;
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+        }
     }
 
     // Called by ProceduralDungeonGenerator at the end of GenerateDungeonCoroutine

@@ -106,42 +106,16 @@ public class SpawnRoomSetup : MonoBehaviour
 
         CreateRoomNPCShuffle(tileCenter, levelIndex, levelParent, levelDoors);
 
-        // Place the win trigger at the level 0 spawn room.
-        // WinTrigger.OnTriggerEnter checks DetonationManager.IsDetonationActive,
-        // so it only fires during an active detonation escape run.
+        // Level 0: place a checkpoint trigger so the player's respawn is locked here
+        // when they first arrive from the intro room.
+        // The WinTrigger is now on the escape elevator (spawned by ElevatorSetup when
+        // the detonation button is pressed), so it is NOT placed here any more.
         if (levelIndex == 0)
         {
-            SpawnWinTrigger(tileCenter, tileSize, levelParent);
-
-            // Also place a checkpoint trigger so that when the player drops from
-            // the intro room into the dungeon for the first time they see
-            // "Checkpoint saved" and their respawn point is locked to level 0.
-            // (Sub-levels already get this trigger via the levelIndex > 0 path above.)
             SpawnCheckpointTrigger(tileCenter, 0, tileSize, levelParent);
         }
 
         Debug.Log($"SpawnRoomSetup: Spawn room at ({spawnPos.x},{spawnPos.y}) for level {levelIndex}. Spawn point: {spawnPoints[levelIndex]}");
-    }
-
-    /// <summary>
-    /// Places an invisible WinTrigger volume at the level 0 spawn room tile centre.
-    /// The trigger volume matches the footprint of the tile so the player only needs
-    /// to walk back into their starting room to register a win.
-    /// </summary>
-    private void SpawnWinTrigger(Vector3 centre, float tileSize, GameObject levelParent)
-    {
-        GameObject triggerObj = new GameObject("WinTrigger_Level0");
-        triggerObj.transform.position = centre;
-        triggerObj.transform.SetParent(levelParent.transform, true);
-
-        BoxCollider col = triggerObj.AddComponent<BoxCollider>();
-        col.size      = new Vector3(tileSize * 0.8f, 3f, tileSize * 0.8f);
-        col.isTrigger = true;
-
-        triggerObj.AddComponent<WinTrigger>();
-        spawnedDoors.Add(triggerObj); // tracked for ClearAll() on dungeon regeneration
-
-        Debug.Log($"[SpawnRoomSetup] WinTrigger placed at level 0 spawn room ({centre}).");
     }
 
     // Scan candidates that are ONE STEP INWARD from each edge, ordered by preference:

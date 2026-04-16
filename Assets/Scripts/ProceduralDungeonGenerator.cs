@@ -565,6 +565,17 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                                    connStartX, connStartZ);
         }
 
+        // Elevator escape slot — only on level 0. The slot is reserved now (tile removed,
+        // fill tile placed) but the prefab is NOT spawned until DetonationManager calls
+        // ElevatorSetup.SpawnElevator() when the player presses the detonation button.
+        if (levelIndex == 0)
+        {
+            ElevatorSetup elevSetup = ElevatorSetup.Instance;
+            if (elevSetup == null) elevSetup = FindObjectOfType<ElevatorSetup>();
+            if (elevSetup != null)
+                elevSetup.SetupLevel(this, 0, levelParent, spawnRoom, connStartX, connStartZ);
+        }
+
         // Notify CodeNumberManager so it can spawn collectible code numbers for this level.
         // Always use the singleton Instance so InitializeForLevel and OnDigitCollected
         // both operate on the exact same object (FindObjectOfType can return a duplicate
@@ -1300,6 +1311,12 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (detRoom == null) detRoom = FindObjectOfType<DetonationRoomSetup>();
         if (detRoom != null)
             detRoom.ClearAll();
+
+        // Clear elevator escape slot and any spawned elevator prefab
+        ElevatorSetup elevSetup = ElevatorSetup.Instance;
+        if (elevSetup == null) elevSetup = FindObjectOfType<ElevatorSetup>();
+        if (elevSetup != null)
+            elevSetup.ClearAll();
 
         // Clear intro room (re-placed after each generation)
         IntroRoomSetup introRoom = FindObjectOfType<IntroRoomSetup>();
