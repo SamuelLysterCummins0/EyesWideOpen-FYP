@@ -212,6 +212,12 @@ public class PacerNPC : MonoBehaviour
         SirenPhaseManager.Instance?.RegisterPacer(this);
         _ambientSource?.Play();
 
+        // Exclude the player's own layer from the obstacle mask so the LOS raycast
+        // in CanSeePlayer() and CanTrackPlayerInChase() doesn't hit the player's
+        // CharacterController capsule and falsely report the sightline as blocked.
+        if (_player != null)
+            obstacleLayerMask &= ~(1 << _player.gameObject.layer);
+
         _wanderState  = new PacerWanderState(this);
         _chaseState   = new PacerChaseState(this);
         _searchState  = new PacerSearchState(this);

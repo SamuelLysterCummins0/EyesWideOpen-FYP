@@ -51,9 +51,23 @@ public class PacerJumpscare : MonoBehaviour
         // Lock to wherever the NPC is placed in the scene — never moves from this point.
         _lockedPosition = transform.position;
 
-        // Clear any default-set trigger so the animation doesn't play on spawn.
-        if (jumpscareAnimator != null && !string.IsNullOrEmpty(jumpscareAnimTrigger))
-            jumpscareAnimator.ResetTrigger(jumpscareAnimTrigger);
+        if (jumpscareAnimator != null)
+        {
+            // Player death sets Time.timeScale = 0, which freezes any animator still
+            // running on scaled time. Unscaled time keeps the jumpscare playing.
+            jumpscareAnimator.updateMode = AnimatorUpdateMode.UnscaledTime;
+
+            // Force AlwaysAnimate — the jumpscare NPC is off-screen at the moment
+            // the trigger is set (camera is still on the player), so the default
+            // culling modes (CullUpdateTransforms / CullCompletely) would cause the
+            // animator to skip evaluation and silently eat the trigger. This is the
+            // real cause of the intermittent jumpscare animation.
+            jumpscareAnimator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+
+            // Clear any default-set trigger so the animation doesn't play on spawn.
+            if (!string.IsNullOrEmpty(jumpscareAnimTrigger))
+                jumpscareAnimator.ResetTrigger(jumpscareAnimTrigger);
+        }
     }
 
     // ── Public API — called by PacerNPC when the player is caught ──────────────

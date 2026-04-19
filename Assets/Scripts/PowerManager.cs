@@ -171,6 +171,34 @@ public class PowerManager : MonoBehaviour
             CodeNumberManager.Instance.ActivateLevel(level);
     }
 
+    // ── Save / Load helpers ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns true if power has been restored on this level (outage resolved).
+    /// Returns false for non-outage levels (never registered) — handled by the array
+    /// default so SaveGameManager records only truly-restored levels.
+    /// </summary>
+    public bool GetPowerRestored(int levelIndex)
+    {
+        // Only true when the level IS an outage level AND power was turned back on.
+        return levelPowerOn.TryGetValue(levelIndex, out bool on) && on;
+    }
+
+    /// <summary>
+    /// Silently restores power for a saved outage level without playing the fade animation.
+    /// Called by SaveGameManager after dungeon regeneration on load.
+    /// </summary>
+    public void RestorePowerStateQuiet(int levelIndex)
+    {
+        if (!levelPowerOn.ContainsKey(levelIndex) || levelPowerOn[levelIndex]) return;
+
+        levelPowerOn[levelIndex] = true;
+        Debug.Log($"[PowerManager] Quietly restored power for L{levelIndex}.");
+
+        // Make code numbers on this level interactable (they were blocked while power was off)
+        CodeNumberManager.Instance?.ActivateLevel(levelIndex);
+    }
+
     // ── Fade coroutines ───────────────────────────────────────────────────────
 
     private IEnumerator FadeToDark(int level)

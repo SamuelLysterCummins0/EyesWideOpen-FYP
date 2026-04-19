@@ -193,6 +193,38 @@ public class SirenPhaseManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Immediately cancels any active siren sequence on player death/respawn.
+    /// Stops all coroutines, resets NPC speed boosts, restores roof emissive,
+    /// and hides the countdown UI — exactly as OnLevelChanged does, but without
+    /// requiring a level change. Safe to call even when no siren is running.
+    /// </summary>
+    public void CancelSiren()
+    {
+        if (!isPhaseActive) return;
+
+        StopAllCoroutines();
+        isPhaseActive           = false;
+        atmosphereFadeCoroutine = null;
+        pulseCoroutine          = null;
+
+        ResetNPCs();
+        RestoreRoofEmissive();
+
+        if (atmosphereVolume != null)
+        {
+            atmColorAdj.postExposure.value = 0f;
+            atmosphereVolume.gameObject.SetActive(false);
+        }
+        if (countdownContainer != null)
+            countdownContainer.SetActive(false);
+
+        if (InsanityManager.Instance != null)
+            InsanityManager.Instance.IsSirenActive = false;
+
+        Debug.Log("[SirenPhaseManager] Siren cancelled by player respawn.");
+    }
+
+    /// <summary>
     /// Debug: immediately triggers the siren sequence, bypassing the idle wait.
     /// Always runs a full-duration phase regardless of current level.
     /// </summary>

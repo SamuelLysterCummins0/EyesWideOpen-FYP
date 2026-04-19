@@ -62,14 +62,38 @@ public class DungeonNavMeshSetup : MonoBehaviour
 
     private void BakeNavMesh(GameObject levelParent, int levelIndex)
     {
+        // ── Exclude WallBarrier objects from the bake ────────────────────────────
+        // PhysicsColliders geometry mode works correctly in builds (unlike RenderMeshes,
+        // which requires every mesh to have "Read/Write Enabled" in its import settings —
+        // a flag that is off by default and causes ALL tile meshes to be silently skipped
+        // in a build, producing a completely empty NavMesh).
+        //
+        // The downside of PhysicsColliders is that DungeonWallSealer's invisible BoxCollider
+        // barriers (named "WallBarrier_*") sit exactly at tile seams and get included in the
+        // bake, carving the walkable area at every connection point and breaking NPC pathfinding.
+        // We temporarily mark each barrier with NavMeshModifier.ignoreFromBuild = true so the
+        // bake skips them, then remove the modifier immediately afterwards.
+        var addedModifiers = new System.Collections.Generic.List<NavMeshModifier>();
+        foreach (Transform t in levelParent.GetComponentsInChildren<Transform>(includeInactive: true))
+        {
+            if (t.name.StartsWith("WallBarrier"))
+            {
+                NavMeshModifier mod = t.gameObject.AddComponent<NavMeshModifier>();
+                mod.ignoreFromBuild = true;
+                addedModifiers.Add(mod);
+            }
+        }
+
         NavMeshSurface navSurface = levelParent.AddComponent<NavMeshSurface>();
         navSurface.collectObjects = CollectObjects.Children;
-        // Default geometry source (RenderMeshes) — do NOT use PhysicsColliders here.
-        // The WallBarrier objects from DungeonWallSealer are collider-only with no renderer,
-        // so PhysicsColliders mode picks them up and carves the NavMesh exactly at tile seams,
-        // breaking connectivity between tiles. RenderMeshes ignores them entirely.
+        navSurface.useGeometry    = NavMeshCollectGeometry.PhysicsColliders;
         navSurface.BuildNavMesh();
-        Debug.Log($"Level {levelIndex}: NavMesh baked successfully");
+
+        // Clean up temporary modifiers — they're only needed during BuildNavMesh().
+        foreach (NavMeshModifier mod in addedModifiers)
+            Destroy(mod);
+
+        Debug.Log($"Level {levelIndex}: NavMesh baked successfully ({addedModifiers.Count} WallBarriers excluded)");
     }
 
     private List<Transform> CreateSpawnZones(GameObject levelParent, int levelIndex,

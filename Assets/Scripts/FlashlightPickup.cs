@@ -67,6 +67,11 @@ public class FlashlightPickup : MonoBehaviour
             if (supportsEmission[i])
             {
                 mat.EnableKeyword("_EMISSION");
+                // Mark the material as using realtime emission so Unity does NOT
+                // strip the _EMISSION shader variant in builds. Without this, the
+                // keyword is enabled at runtime but the variant doesn't exist in
+                // the built player — so the glow never appears.
+                mat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
                 originalEmission[i] = mat.GetColor("_EmissionColor");
             }
 

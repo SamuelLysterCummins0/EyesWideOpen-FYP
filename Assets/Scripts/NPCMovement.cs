@@ -102,6 +102,12 @@ public class NPCMovement : MonoBehaviour
     private bool      sirenChasingPlayer  = false;
     private Coroutine sirenWanderCoroutine = null;
 
+    // Siren phase stuck detection — mirrors PacerNPC's StuckCheck logic
+    private Vector3 _sirenStuckCheckPos;
+    private float   _sirenStuckCheckTimer;
+    private const float SirenStuckCheckInterval  = 1.5f;
+    private const float SirenStuckMoveThreshold  = 0.3f;
+
     private void Start()
     {
         if (agent == null) agent = GetComponent<NavMeshAgent>();
@@ -181,6 +187,11 @@ public class NPCMovement : MonoBehaviour
     {
         // Will be driven by collectible count once that system replaces CarParts
     }
+
+    private bool IsPlayerProtected()
+        => PlayerSafeZone.IsPlayerInRoom
+        || PlayerSafeZone.IsPlayerProtected
+        || LockerInteraction.IsHidingInLocker;
 
     private bool CheckLineOfSight()
     {
@@ -401,14 +412,20 @@ public class NPCMovement : MonoBehaviour
 
             // Start the wander coroutine if it isn't running yet
             if (sirenWanderCoroutine == null && !sirenChasingPlayer)
+            {
                 sirenWanderCoroutine = StartCoroutine(SirenWanderLoop());
+                _sirenStuckCheckPos   = transform.position;
+                _sirenStuckCheckTimer = 0f;
+            }
 
             float distToPlayer = Vector3.Distance(transform.position, player.position);
 
-            // Detect player: close enough AND line of sight
-            if (!sirenChasingPlayer && distToPlayer <= sirenDetectionRadius && CheckLineOfSight())
+            // Detect player: close enough AND line of sight, but not if player is protected
+            if (!sirenChasingPlayer && distToPlayer <= sirenDetectionRadius && CheckLineOfSight() && !IsPlayerProtected())
             {
-                sirenChasingPlayer = true;
+                sirenChasingPlayer    = true;
+                _sirenStuckCheckPos   = transform.position;
+                _sirenStuckCheckTimer = 0f;
                 if (sirenWanderCoroutine != null)
                 {
                     StopCoroutine(sirenWanderCoroutine);
@@ -417,11 +434,32 @@ public class NPCMovement : MonoBehaviour
                 Debug.Log("[NPCMovement] Siren: player detected — chasing.");
             }
 
-            // Lose the player
-            if (sirenChasingPlayer && distToPlayer > sirenLoseRadius)
+            // Lose the player: out of range, protected (safe room / locker), or stuck at a door
+            if (sirenChasingPlayer)
             {
-                sirenChasingPlayer = false;
-                Debug.Log("[NPCMovement] Siren: lost player — resuming wander.");
+                if (distToPlayer > sirenLoseRadius || IsPlayerProtected())
+                {
+                    sirenChasingPlayer    = false;
+                    _sirenStuckCheckTimer = 0f;
+                    Debug.Log("[NPCMovement] Siren: lost player — resuming wander.");
+                }
+                else
+                {
+                    // Stuck-in-place detection: if the angel hasn't moved enough over the
+                    // check interval it's pressing against a door frame — stop chasing.
+                    _sirenStuckCheckTimer += Time.deltaTime;
+                    if (_sirenStuckCheckTimer >= SirenStuckCheckInterval)
+                    {
+                        float moved           = Vector3.Distance(transform.position, _sirenStuckCheckPos);
+                        _sirenStuckCheckPos   = transform.position;
+                        _sirenStuckCheckTimer = 0f;
+                        if (moved < SirenStuckMoveThreshold)
+                        {
+                            sirenChasingPlayer = false;
+                            Debug.Log("[NPCMovement] Siren: stuck at door — resuming wander.");
+                        }
+                    }
+                }
             }
 
             if (sirenChasingPlayer)

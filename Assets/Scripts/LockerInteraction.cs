@@ -116,11 +116,12 @@ public class LockerInteraction : MonoBehaviour
     {
         mainCamera = Camera.main;
 
-        // Auto-find LockerCamera child
+        // Auto-find LockerCamera — searches the full descendant hierarchy so it
+        // works regardless of how deep the camera sits inside the locker prefab.
         if (lockerCamera == null)
         {
-            Transform camChild = transform.Find("LockerCamera");
-            if (camChild != null) lockerCamera = camChild.GetComponent<Camera>();
+            Camera found = GetComponentInChildren<Camera>(true);
+            if (found != null) lockerCamera = found;
         }
         if (lockerCamera != null) lockerCamera.enabled = false;
 
@@ -175,6 +176,10 @@ public class LockerInteraction : MonoBehaviour
 
         if (playerTransform != null)
             characterController = playerTransform.GetComponent<CharacterController>();
+
+        // Safety: force-disable the locker camera again in Start in case something
+        // re-enabled it between Awake and Start (e.g. a prefab override or another script).
+        if (lockerCamera != null) lockerCamera.enabled = false;
     }
 
     private void Update()
@@ -220,11 +225,9 @@ public class LockerInteraction : MonoBehaviour
             // Check for nearby NPCs and shuffle them away after a delay
             UpdateNPCShuffleTimer();
 
-            // Blink to exit (always available — player is safe here)
-            bool blinkingNow = blinkDetector != null && blinkDetector.IsBlinking;
-            if (blinkingNow && !wasBlinking)
+            // Press Esc to exit the locker
+            if (Input.GetKeyDown(KeyCode.Escape))
                 StartCoroutine(ExitLocker());
-            wasBlinking = blinkingNow;
         }
     }
 
@@ -398,7 +401,7 @@ public class LockerInteraction : MonoBehaviour
         if (shuffleCooldownTimer > 0f)
         {
             shuffleCooldownTimer -= Time.deltaTime;
-            ShowPrompt("Blink to exit");
+            ShowPrompt("Press Esc to exit");
             return;
         }
 
@@ -421,7 +424,7 @@ public class LockerInteraction : MonoBehaviour
         else
         {
             shuffleTimer = 0f;
-            ShowPrompt("Blink to exit");
+            ShowPrompt("Press Esc to exit");
         }
     }
 

@@ -114,6 +114,18 @@ public class DungeonLevelVisibility : MonoBehaviour
     }
 
     /// <summary>
+    /// Show exactly one level and hide all others — used by GameManager.RegenerateDungeon
+    /// to force the visibility state to match "player is on level N" after a full rebuild.
+    /// Without this call, InitialHide() leaves every non-zero level inactive and any
+    /// teleport to level 1+ would drop the player through non-existent geometry.
+    /// </summary>
+    public void ShowOnlyLevel(int levelIndex)
+    {
+        foreach (var kvp in registeredLevels)
+            SetLevelActive(kvp.Key, kvp.Key == levelIndex);
+    }
+
+    /// <summary>
     /// Returns true if the level is not currently active (hidden or not yet registered).
     /// Used by StairwayVisibilityTrigger to infer travel direction without velocity checks:
     /// if the lower level is hidden when the player hits the Top trigger, they must be

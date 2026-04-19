@@ -85,6 +85,9 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
     private GameObject[,] placedTiles;
     private TileConfig[,] placedConfigs;
     private bool isRepairing = false; // Relaxes some placement rules during repair passes
+    // Set to the safe-room entrance tile position while generating a level that has one.
+    // Used by IsCompatibleWithNeighbors to prevent Left/Right edges from facing into the entrance.
+    private Vector2Int safeRoomEntrancePos = new Vector2Int(-1, -1);
     private DungeonLevelVisibility levelVisibility; // Cached for level show/hide management
 
     // Best-attempt tracking across retries — keeps whichever generation had the fewest isolated tiles
@@ -169,6 +172,30 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
 
         // Cache visibility manager (on same GO — safe to do here before generation starts)
         levelVisibility = GetComponent<DungeonLevelVisibility>();
+
+        // Seed Unity's RNG so generation is deterministic and reproducible.
+        // Loading a save re-uses the stored seed → identical dungeon layout every time.
+        // Starting a new game generates a fresh seed and records it in SaveGameManager.
+        if (Application.isPlaying)
+        {
+            var sgm = SaveGameManager.Instance;
+            if (sgm != null && sgm.HasPendingLoad())
+            {
+                SaveData sd = sgm.GetCurrentSaveData();
+                if (sd != null && sd.dungeonSeed != 0)
+                {
+                    Random.InitState(sd.dungeonSeed);
+                    Debug.Log($"[ProceduralDungeonGenerator] Loading save — seeding RNG with {sd.dungeonSeed}");
+                }
+            }
+            else
+            {
+                int newSeed = Mathf.Abs(System.Environment.TickCount);
+                Random.InitState(newSeed);
+                sgm?.RecordDungeonSeed(newSeed);
+                Debug.Log($"[ProceduralDungeonGenerator] New game — RNG seed {newSeed}");
+            }
+        }
 
         ClearDungeon();
         levelParents.Clear();
@@ -308,7 +335,12 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                     else
                     {
                         if (i == 1)
+                        {
                             PlaceStaircaseEntranceTile(px, pz, pathDir, levelParent);
+                            // Record this as the safe-room entrance so IsCompatibleWithNeighbors
+                            // can block Left/Right edges from facing into it during BFS.
+                            safeRoomEntrancePos = new Vector2Int(px, pz);
+                        }
                         else
                             TryPlaceCompatibleTile(px, pz, levelParent);
 
@@ -358,6 +390,10 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 }
             }
         }
+
+        // BFS complete — clear the safe-room entrance guard so normal repair passes
+        // are not constrained by it (isolated-tile repair may place tiles there freely).
+        safeRoomEntrancePos = new Vector2Int(-1, -1);
 
         // For level 0 the BFS starts from the grid centre — a well-connected hub.
         // For level 1+ startX/Z is the perimeter landing position (P0). Starting flood
@@ -485,19 +521,37 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 }
 
                 // All retries exhausted and isolated count still exceeds the threshold.
-                // Force-remove every remaining isolated tile — they are unreachable, so
-                // leaving them causes gameplay bugs (code numbers / items in sealed rooms).
-                // A missing floor tile is less harmful than an inaccessible room.
+                // ORPHAN every remaining isolated tile — null their entries in the
+                // tracking arrays so downstream gameplay systems (code numbers, lockers,
+                // batteries, computer room, etc.) skip these positions and nothing spawns
+                // in an unreachable room.
+                //
+                // Crucially, we KEEP the GameObject alive (not SafeDestroy) so the visible
+                // floor/walls remain intact. Previously this destroyed the tile outright,
+                // leaving a visible HOLE in the grid — most often at corner cells, which
+                // are the easiest to isolate (only 2 neighbours, both can roll walls
+                // facing inward). A sealed-but-visible tile is better than a missing one:
+                //   • The player can't reach it either way (it's still isolated)
+                //   • No gameplay is placed there (arrays are nulled, same as before)
+                //   • The GameObject is still a child of levelParent, so ClearDungeon()
+                //     cleans it up correctly on regenerate
+                //   • NavMesh bake still works (walls act as NavMesh obstacles)
                 List<Vector2Int> finalIsolated = FindIsolatedTiles(connStartX, connStartZ);
                 if (finalIsolated.Count > 0)
                 {
                     foreach (Vector2Int isoPos in finalIsolated)
                     {
-                        SafeDestroy(placedTiles[isoPos.x, isoPos.y]);
+                        GameObject orphan = placedTiles[isoPos.x, isoPos.y];
+                        if (orphan != null)
+                        {
+                            // Rename for editor/debug clarity — this tile is no longer
+                            // addressable via the generator's x/z grid lookups.
+                            orphan.name = $"Orphan_{isoPos.x}_{isoPos.y}_Isolated";
+                        }
                         placedTiles[isoPos.x, isoPos.y]   = null;
                         placedConfigs[isoPos.x, isoPos.y] = null;
                     }
-                    Debug.LogWarning($"[ProceduralDungeonGenerator] Level {levelIndex}: force-removed {finalIsolated.Count} unreachable isolated tile(s) after all {maxGenerationAttempts} attempts failed to meet threshold ({isolatedTileThreshold}).");
+                    Debug.LogWarning($"[ProceduralDungeonGenerator] Level {levelIndex}: orphaned {finalIsolated.Count} unreachable isolated tile(s) (kept visible, excluded from gameplay) after all {maxGenerationAttempts} attempts failed to meet threshold ({isolatedTileThreshold}).");
                 }
 
                 // Tracking fields are cleared in the unconditional block below.
@@ -563,17 +617,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 detRoom.SetupLevel(this, levelIndex, levelParent,
                                    spawnRoom, computerRoom, hiddenRoom,
                                    connStartX, connStartZ);
-        }
-
-        // Elevator escape slot — only on level 0. The slot is reserved now (tile removed,
-        // fill tile placed) but the prefab is NOT spawned until DetonationManager calls
-        // ElevatorSetup.SpawnElevator() when the player presses the detonation button.
-        if (levelIndex == 0)
-        {
-            ElevatorSetup elevSetup = ElevatorSetup.Instance;
-            if (elevSetup == null) elevSetup = FindObjectOfType<ElevatorSetup>();
-            if (elevSetup != null)
-                elevSetup.SetupLevel(this, 0, levelParent, spawnRoom, connStartX, connStartZ);
         }
 
         // Notify CodeNumberManager so it can spawn collectible code numbers for this level.
@@ -855,6 +898,43 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                 PlaceTile(x, z, perimFallback, parent);
                 return false; // Don't expand frontier from fallback placement
             }
+
+            // LAST RESORT for perimeter: if no tile with an inward-open edge exists,
+            // accept a fully-walled tile rather than leaving the cell empty. This was
+            // the root cause of missing-corner bugs: corners have only 2 neighbours so
+            // their candidate pool is smallest, and rolling an empty pool at the previous
+            // stage left a literal hole in the grid.
+            //
+            // A sealed-corner tile is isolated (can't connect inward) but that's fine —
+            // the orphan logic at the end of GenerateLevel handles isolated tiles safely
+            // by keeping their GameObject visible while nulling their array entries so
+            // nothing gameplay-wise spawns on them. The comment above about the "stacking
+            // bug in TryRepairIsolatedTile" no longer applies since orphan replaces the
+            // destroy fallback.
+            List<GameObject> perimeterLastResort = new List<GameObject>();
+            foreach (GameObject prefab in allTilePrefabs)
+            {
+                if (prefab == null || !tileConfigs.ContainsKey(prefab.name)) continue;
+                if (prefab.name.Contains("Stairs") || prefab.name == "Tiles_01_Fill") continue;
+                TileConfig cfg = tileConfigs[prefab.name];
+
+                // Outward-facing edges must still be walls — this is the non-negotiable
+                // "no walk-off hazard" rule. We ONLY relax the hasInwardOpen requirement.
+                if (x == 0              && cfg.west  != EdgeType.Wall) continue;
+                if (x == dungeonWidth-1 && cfg.east  != EdgeType.Wall) continue;
+                if (z == 0              && cfg.south != EdgeType.Wall) continue;
+                if (z == dungeonHeight-1 && cfg.north != EdgeType.Wall) continue;
+
+                perimeterLastResort.Add(prefab);
+            }
+
+            if (perimeterLastResort.Count > 0)
+            {
+                GameObject sealedFallback = perimeterLastResort[Random.Range(0, perimeterLastResort.Count)];
+                PlaceTile(x, z, sealedFallback, parent);
+                Debug.LogWarning($"[ProceduralDungeonGenerator] Perimeter cell ({x},{z}) used sealed-tile last resort — no inward-open candidate existed. Will be orphaned if isolated, but the cell is visually complete.");
+                return false;
+            }
         }
 
         // Interior: use Fill tile as last resort
@@ -1047,6 +1127,23 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
             }
         }
 
+        // Safe-room entrance guard: if this tile is being placed directly adjacent to
+        // the stairway entrance tile, its face toward that entrance must not be Left or
+        // Right. Those partial-wall edges create a passable gap into the safe room that
+        // can't be sealed with a sliding door and isn't blocked by any geometry.
+        if (safeRoomEntrancePos.x >= 0)
+        {
+            int ex = safeRoomEntrancePos.x, ez = safeRoomEntrancePos.y;
+            // Tile is west-neighbour of entrance → its east face must not be Left/Right
+            if (x == ex - 1 && z == ez && (config.east == EdgeType.Left || config.east == EdgeType.Right)) return false;
+            // Tile is east-neighbour of entrance → its west face must not be Left/Right
+            if (x == ex + 1 && z == ez && (config.west == EdgeType.Left || config.west == EdgeType.Right)) return false;
+            // Tile is south-neighbour of entrance → its north face must not be Left/Right
+            if (x == ex && z == ez - 1 && (config.north == EdgeType.Left || config.north == EdgeType.Right)) return false;
+            // Tile is north-neighbour of entrance → its south face must not be Left/Right
+            if (x == ex && z == ez + 1 && (config.south == EdgeType.Left || config.south == EdgeType.Right)) return false;
+        }
+
         // Check compatibility with placed neighbors
         // Neighbor at (x-1,z) is to the WEST/LEFT
         if (x > 0 && placedConfigs[x - 1, z] != null && !EdgesMatch(config.west, placedConfigs[x - 1, z].east, strict)) return false;
@@ -1134,6 +1231,41 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (tileConfigs.ContainsKey(prefab.name)) placedConfigs[x, z] = tileConfigs[prefab.name];
     }
 
+    // Gets the reciprocal edge type from a neighbour tile, treating Fill as Open.
+    EdgeType GetReciprocal(TileConfig adj, string faceFromNeighbour)
+    {
+        if (adj.tileName == "Tiles_01_Fill") return EdgeType.Open;
+        return faceFromNeighbour == "south" ? adj.south :
+               faceFromNeighbour == "north" ? adj.north :
+               faceFromNeighbour == "west"  ? adj.west  : adj.east;
+    }
+
+    // Returns true if every Open side of the entrance tile (except the stairs-facing side)
+    // is compatible with a safe room door — i.e. the neighbour's reciprocal is not Left or
+    // Right (those are passable partial-wall gaps that can't be doored and can't be sealed).
+    // Also returns false if there is no doorable side at all (room would have no exit).
+    bool IsValidSafeRoomEntrance(Vector2Int pos, TileConfig cfg, string skipDir)
+    {
+        bool hasDoor = false;
+        bool CheckSide(EdgeType myEdge, int nx, int nz, string faceFromNeighbour)
+        {
+            if (myEdge != EdgeType.Open) return true; // Wall on this side — fine
+            if (!IsInBounds(nx, nz)) return true;     // off-map — treated as sealed
+            TileConfig adj = placedConfigs[nx, nz];
+            if (adj == null) return true;
+            EdgeType rec = GetReciprocal(adj, faceFromNeighbour);
+            if (rec == EdgeType.Left || rec == EdgeType.Right) return false; // unblockable gap
+            if (rec != EdgeType.Wall) hasDoor = true; // Open/Center → door can go here
+            return true;
+        }
+
+        if (skipDir != "north" && !CheckSide(cfg.north, pos.x, pos.y + 1, "south")) return false;
+        if (skipDir != "south" && !CheckSide(cfg.south, pos.x, pos.y - 1, "north")) return false;
+        if (skipDir != "east"  && !CheckSide(cfg.east,  pos.x + 1, pos.y, "west"))  return false;
+        if (skipDir != "west"  && !CheckSide(cfg.west,  pos.x - 1, pos.y, "east"))  return false;
+        return hasDoor; // must also have at least one actual door
+    }
+
     void PlaceStairsOnEdge(GameObject parent, int levelIndex, int connStartX, int connStartZ)
     {
         // Find all stairs tiles
@@ -1214,6 +1346,18 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
                     int dist = Mathf.Abs(inward.x - connStartX) + Mathf.Abs(inward.y - connStartZ);
                     if (dist < 4) continue;
                 }
+
+                // The entrance tile's "back" side points toward the stairs — SafeRoomSetup
+                // skips that face. Every other Open side must either get a door (neighbour
+                // reciprocal is Open/Center) or be naturally sealed (neighbour Wall).
+                // Left/Right reciprocals create passable gaps with no door and can't be
+                // blocked, so the whole candidate is rejected when any such gap exists.
+                // The check also requires at least one actual door side.
+                string stairsDir = x == 0 ? "west" :
+                                   x == dungeonWidth - 1 ? "east" :
+                                   z == 0 ? "south" : "north";
+                if (inwardCfg.IsRoomTile() && !IsValidSafeRoomEntrance(inward, inwardCfg, stairsDir))
+                    continue;
 
                 // Try each stairs tile
                 foreach (GameObject stairsPrefab in stairsPrefabs)
@@ -1311,12 +1455,6 @@ public partial class ProceduralDungeonGenerator : MonoBehaviour
         if (detRoom == null) detRoom = FindObjectOfType<DetonationRoomSetup>();
         if (detRoom != null)
             detRoom.ClearAll();
-
-        // Clear elevator escape slot and any spawned elevator prefab
-        ElevatorSetup elevSetup = ElevatorSetup.Instance;
-        if (elevSetup == null) elevSetup = FindObjectOfType<ElevatorSetup>();
-        if (elevSetup != null)
-            elevSetup.ClearAll();
 
         // Clear intro room (re-placed after each generation)
         IntroRoomSetup introRoom = FindObjectOfType<IntroRoomSetup>();

@@ -169,25 +169,40 @@ public class FlashlightController : MonoBehaviour
     /// </summary>
     private void UpdateGazeAim()
     {
-        if (spotLight == null || gazeDetector == null || playerCamera == null) return;
+        if (spotLight == null || flashlightModel == null || gazeDetector == null || playerCamera == null) return;
         if (!gazeDetector.IsTracking) return;
 
         Ray gazeRay = gazeDetector.GetGazeRay(playerCamera);
 
         // Find the world point the gaze ray is targeting.
         // If nothing is hit within 100 m, project a point far along the ray.
-        Vector3 gazeTarget = Physics.Raycast(gazeRay, out RaycastHit hit, 100f)
-            ? hit.point
-            : gazeRay.origin + gazeRay.direction * 50f;
+        // Clamp a minimum distance: hits close to the camera (e.g. the floor under
+        // the player's feet) can land behind the held flashlight's bulb in world
+        // space, which would flip the aim direction backward and spin the model.
+        const float minAimDistance = 3f;
+        Vector3 gazeTarget;
+        if (Physics.Raycast(gazeRay, out RaycastHit hit, 100f) && hit.distance >= minAimDistance)
+            gazeTarget = hit.point;
+        else
+            gazeTarget = gazeRay.origin + gazeRay.direction * Mathf.Max(minAimDistance, 50f);
 
-        // Aim the spotlight FROM its actual position (the held flashlight) TOWARD that target.
-        // Using the raw gaze direction instead would offset the beam to match the mount point's
-        // lateral position rather than the cursor's position on screen.
+        // Aim FROM the bulb (spotLight position) TOWARD the target — same as the
+        // original beam-only aim that worked correctly. Aiming from the model's
+        // pivot/grip instead caused flips when the target sat behind the pivot
+        // but in front of the bulb (e.g. looking at the floor near the player).
         Vector3 aimDir = (gazeTarget - spotLight.transform.position).normalized;
+        if (aimDir.sqrMagnitude < 0.000001f) return;
 
-        Quaternion targetRotation = Quaternion.LookRotation(aimDir);
-        spotLight.transform.rotation = Quaternion.Lerp(
-            spotLight.transform.rotation,
+        // Compute the rotation the spotlight should have, then convert it into
+        // the parent model's rotation using the light's local rotation offset,
+        // so the whole prefab rotates and the child Light still ends up aimed
+        // exactly at the gaze target.
+        Quaternion desiredLightRot = Quaternion.LookRotation(aimDir);
+        Quaternion lightLocalRot   = Quaternion.Inverse(flashlightModel.transform.rotation) * spotLight.transform.rotation;
+        Quaternion targetRotation  = desiredLightRot * Quaternion.Inverse(lightLocalRot);
+
+        flashlightModel.transform.rotation = Quaternion.Lerp(
+            flashlightModel.transform.rotation,
             targetRotation,
             gazeFollowSpeed * Time.deltaTime);
     }
@@ -218,6 +233,15 @@ public class FlashlightController : MonoBehaviour
         // On level entry, set starting battery based on level difficulty
         float[] startBatteries = { 100f, 75f, 60f, 50f };
         battery = startBatteries[Mathf.Clamp(level, 0, startBatteries.Length - 1)];
+    }
+
+    /// <summary>
+    /// Refills the battery to 100%. Called by GameManager on player respawn so the
+    /// player always starts each attempt with a full charge.
+    /// </summary>
+    public void RefillBattery()
+    {
+        battery = 100f;
     }
 
     public void SetDead(bool dead)

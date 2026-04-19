@@ -190,8 +190,6 @@ MonoBehaviour:
   runFootstepInterval: 0.32
   stunClip: {fileID: 8300000, guid: 4feb2a45120ec7842a0108f2b14d80d6, type: 3}
   recoveryClip: {fileID: 0}
-  jumpscareClip: {fileID: 8300000, guid: 97354b3e847573b478f246c32a759e22, type: 3}
-  jumpscareAnimTrigger: Jumpscare
   speedParam: Speed
 --- !u!82 &5232664190003735513
 AudioSource:

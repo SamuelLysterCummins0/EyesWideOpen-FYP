@@ -112,7 +112,9 @@ public class FlashlightHUD : MonoBehaviour
     private void BuildCanvas()
     {
         GameObject go = new GameObject("FlashlightHUDCanvas");
-        DontDestroyOnLoad(go);
+        // Do NOT call DontDestroyOnLoad here — the canvas must be destroyed with the
+        // scene on save/load so a fresh one is built. DontDestroyOnLoad caused a ghost
+        // bar at the old battery level to persist underneath the new bar on reload.
 
         hudCanvas            = go.AddComponent<Canvas>();
         hudCanvas.renderMode  = RenderMode.ScreenSpaceOverlay;

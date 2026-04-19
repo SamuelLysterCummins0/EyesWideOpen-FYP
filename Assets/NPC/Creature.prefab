@@ -152,7 +152,7 @@ MonoBehaviour:
   animator: {fileID: 6201259203214153508}
   modelForwardOffset: 0
   blinkAnimFrameSkip: 20
-  insanityBuildRate: 2.5
+  insanityBuildRate: 2
   sirenDetectionRadius: 10
   sirenLoseRadius: 16
   sirenWanderRadius: 20
@@ -188,9 +188,9 @@ MonoBehaviour:
   blinkMovementVolume: 0.3
   movementLoopClip: {fileID: 0}
   movementLoopVolume: 0.6
-  flashlightHoldTimeToRespawn: 3.5
+  flashlightHoldTimeToRespawn: 2
   flashlightExposureDecayRate: 1
-  flashlightMaxShakeIntensity: 0.15
+  flashlightMaxShakeIntensity: 0.08
 --- !u!136 &-9083347577661432933
 CapsuleCollider:
   m_ObjectHideFlags: 0

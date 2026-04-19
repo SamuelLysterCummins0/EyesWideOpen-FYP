@@ -108,8 +108,6 @@ public class SpawnRoomSetup : MonoBehaviour
 
         // Level 0: place a checkpoint trigger so the player's respawn is locked here
         // when they first arrive from the intro room.
-        // The WinTrigger is now on the escape elevator (spawned by ElevatorSetup when
-        // the detonation button is pressed), so it is NOT placed here any more.
         if (levelIndex == 0)
         {
             SpawnCheckpointTrigger(tileCenter, 0, tileSize, levelParent);
@@ -191,55 +189,42 @@ public class SpawnRoomSetup : MonoBehaviour
                             (pos.x == w - 2 && pos.y == h - 2);
             if (isCorner) continue;
 
-            // Require at least one inward Open edge whose neighbour is:
-            //   (a) a real placed tile (not fill),
-            //   (b) reachable from the dungeon connectivity anchor, and
-            //   (c) not a Left/Right partial-wall on its reciprocal face.
-            // Condition (b) prevents a room where every door opens onto a dead-end
-            // tile the player can never reach. It is fine for SOME doors to fail —
-            // only ALL doors failing (no valid exit at all) rejects the candidate.
+            // Every inward Open side must be either doorable (neighbour reciprocal Open/Center
+            // → door placed) or naturally sealed (neighbour reciprocal Wall). A Left/Right
+            // reciprocal creates a passable partial-wall gap with no door and nothing to
+            // seal it — reject the whole candidate if any such gap exists.
+            // Also requires at least one actual doorable side (reachable, non-fill neighbour
+            // with Open/Center reciprocal) so the room always has at least one exit.
             bool hasAtLeastOneValidDoor = false;
-            if (outerDir != "north" && cfg.north == ProceduralDungeonGenerator.EdgeType.Open)
+            bool hasBadGap = false;
+
+            ProceduralDungeonGenerator.EdgeType GetRec(ProceduralDungeonGenerator.TileConfig adj, string face)
             {
-                Vector2Int adjPos = new Vector2Int(pos.x, pos.y + 1);
+                if (adj.tileName == "Tiles_01_Fill") return ProceduralDungeonGenerator.EdgeType.Open;
+                return face == "south" ? adj.south :
+                       face == "north" ? adj.north :
+                       face == "west"  ? adj.west  : adj.east;
+            }
+
+            void CheckSide(ProceduralDungeonGenerator.EdgeType myEdge, Vector2Int adjPos, string recipFace)
+            {
+                if (myEdge != ProceduralDungeonGenerator.EdgeType.Open) return;
                 ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(adjPos.x, adjPos.y);
-                if (adj != null && adj.tileName != "Tiles_01_Fill"
-                    && reachableSet.Contains(adjPos)
-                    && adj.south != ProceduralDungeonGenerator.EdgeType.Left
-                    && adj.south != ProceduralDungeonGenerator.EdgeType.Right)
+                if (adj == null) return;
+                ProceduralDungeonGenerator.EdgeType rec = GetRec(adj, recipFace);
+                if (rec == ProceduralDungeonGenerator.EdgeType.Left ||
+                    rec == ProceduralDungeonGenerator.EdgeType.Right)
+                { hasBadGap = true; return; }
+                if (rec != ProceduralDungeonGenerator.EdgeType.Wall && reachableSet.Contains(adjPos))
                     hasAtLeastOneValidDoor = true;
             }
-            if (outerDir != "south" && cfg.south == ProceduralDungeonGenerator.EdgeType.Open)
-            {
-                Vector2Int adjPos = new Vector2Int(pos.x, pos.y - 1);
-                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(adjPos.x, adjPos.y);
-                if (adj != null && adj.tileName != "Tiles_01_Fill"
-                    && reachableSet.Contains(adjPos)
-                    && adj.north != ProceduralDungeonGenerator.EdgeType.Left
-                    && adj.north != ProceduralDungeonGenerator.EdgeType.Right)
-                    hasAtLeastOneValidDoor = true;
-            }
-            if (outerDir != "east" && cfg.east == ProceduralDungeonGenerator.EdgeType.Open)
-            {
-                Vector2Int adjPos = new Vector2Int(pos.x + 1, pos.y);
-                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(adjPos.x, adjPos.y);
-                if (adj != null && adj.tileName != "Tiles_01_Fill"
-                    && reachableSet.Contains(adjPos)
-                    && adj.west != ProceduralDungeonGenerator.EdgeType.Left
-                    && adj.west != ProceduralDungeonGenerator.EdgeType.Right)
-                    hasAtLeastOneValidDoor = true;
-            }
-            if (outerDir != "west" && cfg.west == ProceduralDungeonGenerator.EdgeType.Open)
-            {
-                Vector2Int adjPos = new Vector2Int(pos.x - 1, pos.y);
-                ProceduralDungeonGenerator.TileConfig adj = gen.GetTileConfig(adjPos.x, adjPos.y);
-                if (adj != null && adj.tileName != "Tiles_01_Fill"
-                    && reachableSet.Contains(adjPos)
-                    && adj.east != ProceduralDungeonGenerator.EdgeType.Left
-                    && adj.east != ProceduralDungeonGenerator.EdgeType.Right)
-                    hasAtLeastOneValidDoor = true;
-            }
-            if (!hasAtLeastOneValidDoor) continue;
+
+            if (outerDir != "north") CheckSide(cfg.north, new Vector2Int(pos.x, pos.y + 1), "south");
+            if (outerDir != "south") CheckSide(cfg.south, new Vector2Int(pos.x, pos.y - 1), "north");
+            if (outerDir != "east")  CheckSide(cfg.east,  new Vector2Int(pos.x + 1, pos.y), "west");
+            if (outerDir != "west")  CheckSide(cfg.west,  new Vector2Int(pos.x - 1, pos.y), "east");
+
+            if (hasBadGap || !hasAtLeastOneValidDoor) continue;
 
             return pos;
         }
@@ -292,8 +277,10 @@ public class SpawnRoomSetup : MonoBehaviour
         ProceduralDungeonGenerator.TileConfig neighborCfg = gen.GetTileConfig(nx, nz);
         if (neighborCfg == null) return;
 
-        // For non-Fill tiles the Wall config value maps to a real physical wall barrier,
-        // so only place a door when the neighbour's reciprocal edge is passable.
+        // For non-Fill tiles the Wall/Left/Right config values map to real physical wall
+        // geometry on that face — placing a sliding door against any of those clips or
+        // blocks the opening. Only place when the neighbour's reciprocal is fully Open
+        // (or Center, which still leaves the middle clear for the door).
         // Fill tiles are "open floor, no walls anywhere" (see CanWalkBetween) — their edge
         // configs are meaningless, so we skip the reciprocal check for them.
         if (neighborCfg.tileName != "Tiles_01_Fill")
@@ -302,7 +289,9 @@ public class SpawnRoomSetup : MonoBehaviour
                 offset.z > 0 ? neighborCfg.south :
                 offset.z < 0 ? neighborCfg.north :
                 offset.x > 0 ? neighborCfg.west  : neighborCfg.east;
-            if (reciprocal == ProceduralDungeonGenerator.EdgeType.Wall) return;
+            if (reciprocal == ProceduralDungeonGenerator.EdgeType.Wall  ||
+                reciprocal == ProceduralDungeonGenerator.EdgeType.Left  ||
+                reciprocal == ProceduralDungeonGenerator.EdgeType.Right) return;
         }
 
         if (prefab == null)
@@ -371,6 +360,10 @@ public class SpawnRoomSetup : MonoBehaviour
 
         SpawnRoomCheckpoint checkpoint = triggerObj.AddComponent<SpawnRoomCheckpoint>();
         checkpoint.Initialise(levelIndex);
+
+        // Level 0 spawn room is the escape destination — player must return here during detonation.
+        if (levelIndex == 0)
+            triggerObj.AddComponent<WinTrigger>();
 
         // Track it so ClearAll() can destroy it on dungeon regeneration.
         spawnedDoors.Add(triggerObj);

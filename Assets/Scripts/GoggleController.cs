@@ -43,6 +43,7 @@ public class GoggleController : MonoBehaviour
 
     // Whether the player has collected the goggles item
     private bool gogglesUnlocked = false;
+    public  bool GogglesUnlocked => gogglesUnlocked;
 
     // ── Unity ─────────────────────────────────────────────────────────────────
 

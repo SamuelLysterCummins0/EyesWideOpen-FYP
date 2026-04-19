@@ -47,17 +47,26 @@ public class InsanityVFX : MonoBehaviour
     [SerializeField] private float flashDuration = 0.5f;
 
     // ── Volume override targets per stage ────────────────────────────────────
-    // These are the target values; actual Volume parameters are lerped each frame.
-    private static readonly float[] GrainIntensityTargets      = { 0.20f, 0.55f, 0.82f, 1.00f };
+    // These are INSANITY DELTAS added on top of the captured atmospheric baseline.
+    // e.g. actual grain target = _baseGrain + GrainIntensityTargets[stage]
+    // At stage 0, delta = 0 so the global volume's atmospheric values show through unchanged.
+    private static readonly float[] GrainIntensityTargets      = { 0f,    0.35f, 0.62f, 0.80f };
     // 'response' is FilmGrain's luminance-response parameter (0=uniform, 1=shadows only)
     private static readonly float[] GrainResponseTargets       = { 0.0f,  0.3f,  0.65f, 0.95f };
-    private static readonly float[] ChromaticAberrationTargets = { 0f,   0.45f, 0.80f, 1.00f };
-    private static readonly float[] SaturationTargets          = { 0f,  -30f,  -65f,  -90f   };
-    private static readonly float[] VignetteIntensityTargets   = { 0f,   0.20f, 0.42f, 0.60f };
-    private static readonly float[] LensDistortionTargets      = { 0f,  -0.10f,-0.30f,-0.55f };
+    private static readonly float[] ChromaticAberrationTargets = { 0f,    0.45f, 0.80f, 1.00f };
+    private static readonly float[] SaturationTargets          = { 0f,   -30f,  -65f,  -90f   };
+    private static readonly float[] VignetteIntensityTargets   = { 0f,    0.20f, 0.42f, 0.60f };
+    private static readonly float[] LensDistortionTargets      = { 0f,   -0.10f,-0.30f,-0.55f };
     private const float LerpSpeed = 3f; // How fast effects blend between stages
 
     // ── Runtime ───────────────────────────────────────────────────────────────
+
+    // ── Atmospheric baseline (auto-captured from the scene's global volume in Start) ──
+    // InsanityVFX owns grain/CA/vignette at priority 75, so it reads what the global volume
+    // had and uses those values as the stage-0 floor instead of forcing them to 0.
+    private float _baseGrain    = 0.20f; // fallback if no global volume found
+    private float _baseCA       = 0f;
+    private float _baseVignette = 0f;
 
     private Volume              insanityVolume;
     private FilmGrain           filmGrain;
@@ -89,6 +98,8 @@ public class InsanityVFX : MonoBehaviour
             playerCamera = Camera.main;
 
         BuildVolume();
+        CaptureAtmosphericBaseline(); // reads global volume → sets _base* fields
+        SyncVolumeToBaseline();       // applies _base* immediately so there's no 1-frame pop
         BuildAudio();
         BuildFlashOverlay();
         BuildHallucinationPool();
@@ -132,16 +143,29 @@ public class InsanityVFX : MonoBehaviour
         int s = Mathf.Clamp(currentStage, 0, 3);
         float t = LerpSpeed * Time.deltaTime;
 
-        // Lerp all Volume parameters toward their stage targets
+        // Weight: 0 at stage 0 → global volume shows through completely (no InsanityVFX influence).
+        //         1 at stage 1+ → InsanityVFX fully overrides, scaled by insanity.
+        // This matches the PowerManager/SirenPhaseManager pattern (they use SetActive(false);
+        // we lerp weight so Update() keeps running to prime the values before weight reaches 1).
+        float weightTarget = currentStage == 0 ? 0f : 1f;
+        insanityVolume.weight = Mathf.Lerp(insanityVolume.weight, weightTarget, t);
+
+        // Lerp all Volume parameters toward their stage targets.
+        // Each target = captured atmospheric baseline + insanity delta for this stage.
+        // At stage 0, delta = 0, so the values match the global volume exactly.
         if (filmGrain != null)
         {
-            filmGrain.intensity.value = Mathf.Lerp(filmGrain.intensity.value, GrainIntensityTargets[s], t);
-            filmGrain.response.value  = Mathf.Lerp(filmGrain.response.value,  GrainResponseTargets[s],  t);
+            float grainTarget = _baseGrain + GrainIntensityTargets[s];
+            filmGrain.intensity.value = Mathf.Lerp(filmGrain.intensity.value, grainTarget, t);
+            filmGrain.response.value  = Mathf.Lerp(filmGrain.response.value,  GrainResponseTargets[s], t);
         }
 
         if (chromaticAberration != null)
+        {
+            float caTarget = _baseCA + ChromaticAberrationTargets[s];
             chromaticAberration.intensity.value = Mathf.Lerp(
-                chromaticAberration.intensity.value, ChromaticAberrationTargets[s], t);
+                chromaticAberration.intensity.value, caTarget, t);
+        }
 
         if (colorAdjustments != null)
             colorAdjustments.saturation.value = Mathf.Lerp(
@@ -149,7 +173,8 @@ public class InsanityVFX : MonoBehaviour
 
         if (vignette != null)
         {
-            float baseIntensity = VignetteIntensityTargets[s];
+            // _baseVignette is the captured global-volume floor; VignetteIntensityTargets adds insanity delta.
+            float baseIntensity = _baseVignette + VignetteIntensityTargets[s];
             float pulse = 0f;
             if (currentStage >= 2)
             {
@@ -303,6 +328,67 @@ public class InsanityVFX : MonoBehaviour
 
     // ── Builder Helpers ───────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Reads the scene's lowest-priority global Volume profile and captures its
+    /// grain / CA / vignette values as the atmospheric floor.  Called in Start()
+    /// immediately after BuildVolume() so the InsanityVFX volume starts at the
+    /// exact same values the global volume was already displaying — no pop.
+    ///
+    /// This mirrors the pattern used by PowerManager / SirenPhaseManager / GoggleController:
+    /// those volumes start SetActive(false) and contribute nothing until their event fires.
+    /// InsanityVFX stays active (because it drives insanity continuously), so it instead
+    /// mirrors whatever the global volume had rather than forcing everything to 0.
+    /// </summary>
+    private void CaptureAtmosphericBaseline()
+    {
+        Volume[] allVolumes = FindObjectsOfType<Volume>();
+        Volume baseVolume   = null;
+        float  lowestPrio   = float.MaxValue;
+
+        foreach (Volume v in allVolumes)
+        {
+            if (v == insanityVolume) continue;    // skip our own volume
+            if (!v.isGlobal || v.profile == null) continue;
+            if (v.priority < lowestPrio)
+            {
+                lowestPrio  = v.priority;
+                baseVolume  = v;
+            }
+        }
+
+        if (baseVolume == null)
+        {
+            Debug.Log("[InsanityVFX] No scene global volume found — using code defaults " +
+                      $"(grain={_baseGrain:F2} ca={_baseCA:F2} vignette={_baseVignette:F2}).");
+            return;
+        }
+
+        // Only read parameters that are actually overridden in the global profile.
+        if (baseVolume.profile.TryGet<FilmGrain>(out var fg) && fg.intensity.overrideState)
+            _baseGrain = fg.intensity.value;
+
+        if (baseVolume.profile.TryGet<ChromaticAberration>(out var ca) && ca.intensity.overrideState)
+            _baseCA = ca.intensity.value;
+
+        if (baseVolume.profile.TryGet<Vignette>(out var vig) && vig.intensity.overrideState)
+            _baseVignette = vig.intensity.value;
+
+        Debug.Log($"[InsanityVFX] Captured atmospheric baseline from '{baseVolume.name}' " +
+                  $"(priority {lowestPrio}) — grain:{_baseGrain:F2}  ca:{_baseCA:F2}  vignette:{_baseVignette:F2}");
+    }
+
+    /// <summary>
+    /// Writes the captured baseline values directly into the InsanityVFX volume
+    /// so the very first rendered frame already matches the global volume — no
+    /// one-frame flash of 0 before Update() runs its first lerp.
+    /// </summary>
+    private void SyncVolumeToBaseline()
+    {
+        if (filmGrain           != null) filmGrain.intensity.value           = _baseGrain;
+        if (chromaticAberration != null) chromaticAberration.intensity.value = _baseCA;
+        if (vignette            != null) vignette.intensity.value            = _baseVignette;
+    }
+
     private void BuildVolume()
     {
         GameObject go = new GameObject("InsanityVolume");
@@ -310,6 +396,11 @@ public class InsanityVFX : MonoBehaviour
         insanityVolume.isGlobal = true;
         // Priority 75: above PowerManager (50) and SirenPhaseManager (60), below GoggleController (100)
         insanityVolume.priority = 75;
+        // weight = 0 → this volume contributes NOTHING at stage 0, identical to the
+        // SetActive(false) pattern used by PowerManager / SirenPhaseManager / GoggleController.
+        // Update() lerps weight toward 1 as insanity climbs, so the global volume's
+        // grain / CA / vignette / lens distortion show through unaffected at game start.
+        insanityVolume.weight   = 0f;
 
         VolumeProfile profile = ScriptableObject.CreateInstance<VolumeProfile>();
 
@@ -318,15 +409,17 @@ public class InsanityVFX : MonoBehaviour
         // NOT own, otherwise this priority-75 volume will silently cancel effects from
         // lower-priority volumes (PowerManager p50, SirenPhaseManager p60).
 
-        // FilmGrain — owned exclusively by this volume
+        // FilmGrain — owned exclusively by this volume.
+        // Value is 0 here; CaptureAtmosphericBaseline + SyncVolumeToBaseline run immediately
+        // after BuildVolume in Start() and set the real value before any frame renders.
         filmGrain = profile.Add<FilmGrain>(true);
         filmGrain.active = true;
         filmGrain.intensity.overrideState = true;
         filmGrain.response.overrideState  = true;
         filmGrain.intensity.value         = 0f;
-        filmGrain.response.value          = 0f;
+        filmGrain.response.value          = GrainResponseTargets[0];
 
-        // ChromaticAberration — owned exclusively by this volume
+        // ChromaticAberration — owned exclusively by this volume.
         chromaticAberration = profile.Add<ChromaticAberration>(true);
         chromaticAberration.active = true;
         chromaticAberration.intensity.overrideState = true;
@@ -343,11 +436,11 @@ public class InsanityVFX : MonoBehaviour
         colorAdjustments.contrast.overrideState     = false;
         colorAdjustments.hueShift.overrideState     = false;
 
-        // Vignette — owned exclusively by this volume
+        // Vignette — owned exclusively by this volume.
         vignette = profile.Add<Vignette>(true);
         vignette.active = true;
         vignette.intensity.overrideState = true;
-        vignette.intensity.value         = 0f;
+        vignette.intensity.value         = 0f;    // overwritten by SyncVolumeToBaseline before render
         vignette.color.overrideState     = false; // not ours
         vignette.rounded.overrideState   = false; // not ours
 

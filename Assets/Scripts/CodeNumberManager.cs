@@ -511,6 +511,64 @@ public class CodeNumberManager : MonoBehaviour
         levelStates.Clear();
     }
 
+    // ── Save / Load helpers ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Returns a bitmask of which digit slots (0-3) have been collected on this level.
+    /// Used by SaveGameManager when writing a save file.
+    /// </summary>
+    public int GetCollectedMask(int levelIndex)
+    {
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return 0;
+        int mask = 0;
+        for (int i = 0; i < 4; i++)
+            if (data.collected[i]) mask |= (1 << i);
+        return mask;
+    }
+
+    /// <summary>
+    /// Silently marks collected digits from a saved bitmask without triggering
+    /// the siren or other in-game events. Disables the corresponding pickup
+    /// GameObjects, updates the HUD, and re-locks/unlocks the keypad appropriately.
+    /// Called by SaveGameManager after dungeon regeneration on load.
+    /// </summary>
+    public void RestoreCollectedStateQuiet(int levelIndex, int mask)
+    {
+        if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return;
+
+        for (int i = 0; i < 4; i++)
+        {
+            if ((mask & (1 << i)) == 0 || data.collected[i]) continue;
+
+            data.collected[i] = true;
+            data.collectedCount++;
+
+            // Disable the physical pickup so it is gone from the world.
+            // data.numbers[i] is the wall/hidden-room CodeNumber for slot i.
+            // Slot 3 (computer terminal) has no entry in numbers, which is fine.
+            if (i < data.numbers.Count && data.numbers[i] != null)
+                data.numbers[i].SetActive(false);
+        }
+
+        // Refresh the HUD to show all restored digits
+        if (hud == null) hud = FindObjectOfType<CodeNumberHUD>(true);
+        if (hud != null)
+        {
+            hud.ResetDisplay();
+            for (int i = 0; i < 4; i++)
+                if (data.collected[i])
+                    hud.UpdateSlot(i, data.digits[i], data.collectedCount);
+            if (data.collectedCount >= 4)
+                hud.ShowAllCollectedMessage();
+        }
+
+        // Sync keypad lock state
+        if (data.keypad != null)
+            data.keypad.SetCodesCollected(data.collectedCount >= 4);
+
+        Debug.Log($"[CodeNumberManager] Restored collected state for L{levelIndex}: mask={mask}, count={data.collectedCount}");
+    }
+
     // ── Hidden room / excluded tile integration ───────────────────────────────
 
     /// <summary>

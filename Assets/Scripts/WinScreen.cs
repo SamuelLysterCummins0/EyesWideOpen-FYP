@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using TMPro;
 
 /// <summary>
@@ -34,6 +35,12 @@ public class WinScreen : MonoBehaviour
     [SerializeField] private float textDelay = 0.8f;
     [Tooltip("How many real-time seconds the text takes to fade in.")]
     [SerializeField] private float textFadeDuration = 2f;
+
+    [Header("Return to Menu")]
+    [Tooltip("Name of the main menu scene to load after the victory screen.")]
+    [SerializeField] private string mainMenuScene = "MainMenu";
+    [Tooltip("Real-time seconds to display 'You Escaped' before returning to the main menu.")]
+    [SerializeField] private float returnToMenuDelay = 5f;
 
     // ── Unity ─────────────────────────────────────────────────────────────────
 
@@ -125,5 +132,10 @@ public class WinScreen : MonoBehaviour
         Time.timeScale = 0f;
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
+
+        // Wait then return to the main menu
+        yield return new WaitForSecondsRealtime(returnToMenuDelay);
+        Time.timeScale = 1f;
+        SceneManager.LoadScene(mainMenuScene);
     }
 }

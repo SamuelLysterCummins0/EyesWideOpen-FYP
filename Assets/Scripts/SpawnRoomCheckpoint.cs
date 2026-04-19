@@ -16,6 +16,20 @@ public class SpawnRoomCheckpoint : MonoBehaviour
     // Prevents re-triggering every time the player walks in and out.
     private bool isActivated = false;
 
+    /// <summary>Exposes the level this checkpoint belongs to (read by SaveGameManager).</summary>
+    public int LevelIndex => levelIndex;
+
+    /// <summary>
+    /// Called by SaveGameManager on load to silently mark this checkpoint as already activated,
+    /// preventing the "Checkpoint saved" notification from firing again when the player
+    /// re-enters a room they already visited before saving.
+    /// Does NOT call SetCurrentLevel — that is handled separately by SaveGameManager.
+    /// </summary>
+    public void MarkActivated()
+    {
+        isActivated = true;
+    }
+
     // Optional on-screen message — created at runtime, no scene setup needed.
     private static GameObject notificationCanvas;
 

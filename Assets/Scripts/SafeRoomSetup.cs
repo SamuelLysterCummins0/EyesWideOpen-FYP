@@ -100,8 +100,10 @@ public class SafeRoomSetup : MonoBehaviour
         ProceduralDungeonGenerator.TileConfig neighborCfg = gen.GetTileConfig(nx, nz);
         if (neighborCfg == null) return;
 
-        // For non-Fill tiles the Wall config value maps to a real physical wall barrier,
-        // so only place a door when the neighbour's reciprocal edge is passable.
+        // For non-Fill tiles the Wall/Left/Right config values map to real physical wall
+        // geometry on that face — placing a sliding door against any of those clips or
+        // blocks the opening. Only place when the neighbour's reciprocal is fully Open
+        // (or Center, which still leaves the middle clear for the door).
         // Fill tiles are "open floor, no walls anywhere" (see CanWalkBetween) — their edge
         // configs are meaningless, so we skip the reciprocal check for them.
         if (neighborCfg.tileName != "Tiles_01_Fill")
@@ -110,7 +112,9 @@ public class SafeRoomSetup : MonoBehaviour
                 offset.z > 0 ? neighborCfg.south :
                 offset.z < 0 ? neighborCfg.north :
                 offset.x > 0 ? neighborCfg.west  : neighborCfg.east;
-            if (reciprocal == ProceduralDungeonGenerator.EdgeType.Wall) return;
+            if (reciprocal == ProceduralDungeonGenerator.EdgeType.Wall  ||
+                reciprocal == ProceduralDungeonGenerator.EdgeType.Left  ||
+                reciprocal == ProceduralDungeonGenerator.EdgeType.Right) return;
         }
 
         if (prefab == null)

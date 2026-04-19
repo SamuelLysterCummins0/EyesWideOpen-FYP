@@ -123,10 +123,16 @@ public class RoomNPCShuffle : MonoBehaviour
         }
     }
 
-    private void OnDestroy()
+    private void OnDestroy() => ReleaseRegistrations();
+
+    // Release on disable too — when the player moves between levels, the old
+    // level's parent is SetActive(false) and this Update() stops running.
+    // Without this, stale counters leave IsPlayerInRoom / IsPlayerProtected
+    // permanently true, causing Pacers on the new level to never chase.
+    private void OnDisable() => ReleaseRegistrations();
+
+    private void ReleaseRegistrations()
     {
-        // Ensure both counters are released when this room is cleaned up
-        // (e.g. dungeon regeneration) so they never get stuck positive.
         if (_isProtecting)
         {
             PlayerSafeZone.UnregisterProtection();
@@ -137,6 +143,8 @@ public class RoomNPCShuffle : MonoBehaviour
             PlayerSafeZone.UnregisterRoomEntry();
             _isInRoom = false;
         }
+        // Reset the shuffle timer so re-enabling the level doesn't instantly fire it.
+        timer = 0f;
     }
 
     private bool IsPlayerInside()

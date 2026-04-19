@@ -20,8 +20,17 @@ public class CodeNumberHUD : MonoBehaviour
     [SerializeField] private Color emptySlotColor = new Color(0.5f, 0.5f, 0.5f, 1f);
     [SerializeField] private Color filledSlotColor = new Color(1f, 0.9f, 0.4f, 1f);  // Warm yellow
 
+    [Header("Detonation Message")]
+    [SerializeField] private Color detonationMessageColor = Color.red;
+    [Tooltip("Font size for the detonation escape message. Should be a bit larger than the normal counter text.")]
+    [SerializeField] private float detonationMessageFontSize = 28f;
+
+    private float originalCounterFontSize;
+
     private void Awake()
     {
+        if (counterText != null)
+            originalCounterFontSize = counterText.fontSize;
         ResetDisplay();
     }
 
@@ -83,7 +92,24 @@ public class CodeNumberHUD : MonoBehaviour
     }
 
     /// <summary>
-    /// Called by PowerManager when the powerbox is activated.
+    /// Called by DetonationManager when the detonation sequence starts.
+    /// Hides the digit slots and shows the escape objective in larger red text.
+    /// </summary>
+    public void ShowDetonationMessage()
+    {
+        foreach (TMP_Text slot in digitSlots)
+            if (slot != null) slot.gameObject.SetActive(false);
+
+        if (counterText != null)
+        {
+            counterText.fontSize = detonationMessageFontSize;
+            counterText.color    = detonationMessageColor;
+            counterText.text     = "Get to the safe room on level 1 and escape!";
+        }
+    }
+
+    /// <summary>
+    /// Called by PowerManager when the powerbox is activated, or by DetonationManager on reset.
     /// Restores the digit slots — CodeNumberManager.ActivateLevel will then
     /// re-fill any already-collected slots.
     /// </summary>
@@ -93,6 +119,10 @@ public class CodeNumberHUD : MonoBehaviour
             if (slot != null) slot.gameObject.SetActive(true);
 
         if (counterText != null)
-            counterText.text = "0 / 4 codes found";
+        {
+            if (originalCounterFontSize > 0) counterText.fontSize = originalCounterFontSize;
+            counterText.color = filledSlotColor;
+            counterText.text  = "0 / 4 codes found";
+        }
     }
 }
