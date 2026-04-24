@@ -4,19 +4,6 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using TMPro;
 
-/// <summary>
-/// Procedural main-menu system.
-///
-/// Button flow:
-///   Start    → shows Continue / New Game / Back
-///   Continue → loads most-recent save directly into MainGame
-///   New Game → slot-picker to choose where to save, then loads Intro
-///   Load     → slot-picker to continue an existing save into MainGame
-///   Settings → volume, fullscreen, sensitivity
-///   Exit     → quits
-///
-/// All panels (overlays) are generated at runtime — nothing to configure in prefabs.
-/// </summary>
 public class MainMenuController : MonoBehaviour
 {
     [Header("Existing Scene Buttons — drag from Inspector")]
@@ -40,7 +27,6 @@ public class MainMenuController : MonoBehaviour
     private GameObject _loadSlotsArea;
     private GameObject _newGameSlotsArea;
 
-    // ─── Horror palette ───────────────────────────────────────────────────────
     private static readonly Color PanelBg   = new Color(0.05f, 0.05f, 0.05f, 0.97f);
     private static readonly Color Accent     = new Color(0.55f, 0.08f, 0.08f, 1f);
     private static readonly Color AccentDim  = new Color(0.55f, 0.08f, 0.08f, 0.30f);
@@ -57,8 +43,6 @@ public class MainMenuController : MonoBehaviour
     private const string PrefMasterVol  = "MasterVolume";
     private const string PrefFullscreen = "Fullscreen";
     private const string PrefMouseSens  = "MouseSensitivity";
-
-    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -77,8 +61,6 @@ public class MainMenuController : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible   = true;
     }
-
-    // ─── Setup ────────────────────────────────────────────────────────────────
 
     private void EnsureSaveManager()
     {
@@ -115,12 +97,6 @@ public class MainMenuController : MonoBehaviour
         Screen.fullScreen    = PlayerPrefs.GetInt(PrefFullscreen, 1) == 1;
     }
 
-    // ─── Panel Builders ───────────────────────────────────────────────────────
-
-    /// <summary>
-    /// The panel shown after clicking Start.
-    /// Contains Continue, New Game, and Back buttons.
-    /// </summary>
     private GameObject BuildStartFlowPanel()
     {
         var panel   = CreateOverlayDimmer("StartFlowPanel");
@@ -140,11 +116,6 @@ public class MainMenuController : MonoBehaviour
         return panel;
     }
 
-    /// <summary>
-    /// Builds a slot-picker panel used for both Load and New Game.
-    /// isNewGame=true → clicking a slot starts a fresh game in that slot.
-    /// isNewGame=false → clicking a slot resumes an existing save.
-    /// </summary>
     private GameObject BuildSlotPanel(string title, bool isNewGame)
     {
         var panel = CreateOverlayDimmer(isNewGame ? "NewGameSlotPanel" : "LoadPanel");
@@ -231,8 +202,6 @@ public class MainMenuController : MonoBehaviour
         return panel;
     }
 
-    // ─── Slot Population ──────────────────────────────────────────────────────
-
     private void PopulateLoadSlots()
     {
         ClearChildren(_loadSlotsArea);
@@ -276,8 +245,6 @@ public class MainMenuController : MonoBehaviour
         if (isNewGame) PopulateNewGameSlots();
         else           PopulateLoadSlots();
     }
-
-    // ─── Button Handlers ──────────────────────────────────────────────────────
 
     private void OnStartClicked()
     {
@@ -349,8 +316,6 @@ public class MainMenuController : MonoBehaviour
         SceneManager.LoadScene(newGameScene);  // play cinematic for new game
     }
 
-    // ─── Settings Handlers ────────────────────────────────────────────────────
-
     private void OnMasterVolumeChanged(float val)
     {
         AudioListener.volume = val;
@@ -368,8 +333,6 @@ public class MainMenuController : MonoBehaviour
         PlayerPrefs.SetFloat(PrefMouseSens, val);
     }
 
-    // ─── Canvas / Card Helpers ────────────────────────────────────────────────
-
     private GameObject CreateOverlayDimmer(string name)
     {
         var go   = new GameObject(name);
@@ -383,7 +346,6 @@ public class MainMenuController : MonoBehaviour
         return go;
     }
 
-    /// <summary>Creates a card with a VLG content area. bottomPad extra space below content.</summary>
     private GameObject CreateCardContent(GameObject parent, string title,
         float cardHeight, float bottomPad)
     {
@@ -449,8 +411,6 @@ public class MainMenuController : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.Center;
     }
 
-    // ─── VLG Item Factories ───────────────────────────────────────────────────
-
     private void AddMenuButton(GameObject parent, string text,
         UnityEngine.Events.UnityAction onClick, bool isAccent = false, bool dimmed = false)
     {
@@ -479,7 +439,6 @@ public class MainMenuController : MonoBehaviour
         MakeTMPLabel(go, text, 16, FontStyles.Bold, isAccent || dimmed ? Color.white : TextCol);
     }
 
-    /// <summary>Slot row: [main button - flex] [CLEAR button - 72px] side-by-side.</summary>
     private void AddSlotRow(GameObject parent, string label, bool alwaysClickable,
         UnityEngine.Events.UnityAction onLoad, UnityEngine.Events.UnityAction onClear)
     {
@@ -732,7 +691,6 @@ public class MainMenuController : MonoBehaviour
         if (onChange != null) toggle.onValueChanged.AddListener(onChange);
     }
 
-    /// <summary>Button inside the bottom bar HLG of a slot panel.</summary>
     private void AddBarButton(GameObject parent, string text,
         UnityEngine.Events.UnityAction onClick, bool isAccent)
     {
@@ -758,8 +716,6 @@ public class MainMenuController : MonoBehaviour
         MakeTMPLabel(go, text, 15, FontStyles.Bold, Color.white);
     }
 
-    // ─── TMP Helper ───────────────────────────────────────────────────────────
-
     private void MakeTMPLabel(GameObject parent, string text, float fontSize,
         FontStyles style, Color color,
         TextAlignmentOptions alignment = TextAlignmentOptions.Center,
@@ -779,8 +735,6 @@ public class MainMenuController : MonoBehaviour
         tmp.color     = color;
         tmp.alignment = alignment;
     }
-
-    // ─── Utilities ────────────────────────────────────────────────────────────
 
     private static void ClearChildren(GameObject parent)
     {

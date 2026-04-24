@@ -188,7 +188,7 @@ MonoBehaviour:
   blinkMovementVolume: 0.3
   movementLoopClip: {fileID: 0}
   movementLoopVolume: 0.6
-  flashlightHoldTimeToRespawn: 2
+  flashlightHoldTimeToRespawn: 3
   flashlightExposureDecayRate: 1
   flashlightMaxShakeIntensity: 0.08
 --- !u!136 &-9083347577661432933

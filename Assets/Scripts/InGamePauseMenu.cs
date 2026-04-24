@@ -3,19 +3,6 @@ using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using TMPro;
 
-/// <summary>
-/// Fully procedural in-game pause menu.
-/// Attach to any persistent GameObject in your game scene.
-///
-/// Pause suspends:
-///   - Time.timeScale = 0  (physics, Update-based logic)
-///   - AudioListener.pause (all AudioSources)
-///   - GazeDetector.SetGazeActive(false)
-///   - BlinkDetector component disabled
-///   - SUPERCharacterAIO player controller disabled
-///
-/// All systems are restored on Resume with their original state.
-/// </summary>
 public class InGamePauseMenu : MonoBehaviour
 {
     [Header("Trigger")]
@@ -49,7 +36,6 @@ public class InGamePauseMenu : MonoBehaviour
     private GameObject _settingsPanel;
     private GameObject _controlsPanel;
 
-    // ─── Horror palette (matches main menu) ──────────────────────────────────
     private static readonly Color PanelBg   = new Color(0.05f, 0.05f, 0.05f, 0.97f);
     private static readonly Color Accent     = new Color(0.55f, 0.08f, 0.08f, 1f);
     private static readonly Color AccentDim  = new Color(0.55f, 0.08f, 0.08f, 0.30f);
@@ -65,8 +51,6 @@ public class InGamePauseMenu : MonoBehaviour
     private const string PrefMasterVol  = "MasterVolume";
     private const string PrefFullscreen = "Fullscreen";
     private const string PrefMouseSens  = "MouseSensitivity";
-
-    // ─── Unity Lifecycle ──────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -110,8 +94,6 @@ public class InGamePauseMenu : MonoBehaviour
         if (_isPaused)
             ForceResume();
     }
-
-    // ─── Pause / Resume ───────────────────────────────────────────────────────
 
     public void TogglePause()
     {
@@ -201,8 +183,6 @@ public class InGamePauseMenu : MonoBehaviour
         Cursor.visible      = false;
     }
 
-    // ─── Panel Builders ───────────────────────────────────────────────────────
-
     private GameObject BuildPausePanel()
     {
         // Card height grew to 686 to accommodate the extra "RESET CURRENT LEVEL"
@@ -248,8 +228,6 @@ public class InGamePauseMenu : MonoBehaviour
         panel.SetActive(false);
         return panel;
     }
-
-    // ─── Button Handlers ──────────────────────────────────────────────────────
 
     private void OnSaveClicked()
     {
@@ -369,8 +347,6 @@ public class InGamePauseMenu : MonoBehaviour
         Cursor.visible   = false;
     }
 
-    // ─── Settings Handlers ────────────────────────────────────────────────────
-
     private void OnMasterVolumeChanged(float val)
     {
         AudioListener.volume = val;
@@ -396,8 +372,6 @@ public class InGamePauseMenu : MonoBehaviour
             GameManager.Instance.playerController.Sensitivity = val;
     }
 
-    // ─── Canvas Setup ─────────────────────────────────────────────────────────
-
     private void CreateOverlayCanvas()
     {
         var go = new GameObject("PauseMenuCanvas");
@@ -412,8 +386,6 @@ public class InGamePauseMenu : MonoBehaviour
 
         go.AddComponent<GraphicRaycaster>();
     }
-
-    // ─── UI Factory ───────────────────────────────────────────────────────────
 
     private GameObject CreateOverlayDimmer(string name)
     {
@@ -756,8 +728,6 @@ public class InGamePauseMenu : MonoBehaviour
         go.AddComponent<Image>().color = AccentDim;
     }
 
-    // ─── Controls Panel ───────────────────────────────────────────────────────
-
     private GameObject BuildControlsPanel()
     {
         var panel   = CreateOverlayDimmer("ControlsPanel");
@@ -780,7 +750,6 @@ public class InGamePauseMenu : MonoBehaviour
         return panel;
     }
 
-    /// <summary>Adds a single key → action row to the controls panel.</summary>
     private void AddControlRow(GameObject parent, string key, string action)
     {
         var row = new GameObject($"Control_{key}");

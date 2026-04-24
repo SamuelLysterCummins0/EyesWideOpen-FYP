@@ -2,45 +2,9 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.AI;
 
-/// <summary>
-/// The Pacer — wandering NPC with vision-gated detection, FSM state classes,
-/// and intelligent search. No idle stops or alert animation.
-///
-/// States
-/// ──────
-///   Wander  → Randomly explores the level via NavMesh. Brief pause between each leg.
-///             Transitions to Chase the moment the player enters the FOV cone with LOS.
-///   Chase   → Full-speed pursuit. Requires FOV cone + clear LOS.
-///             Tracks last-known position. Sustained LOS loss → Search.
-///   Search  → Walk to last-known position, look around, fan out. → Chase or Wander.
-///   Stunned → Frozen by flashlight. Resumes interrupted state after duration + immunity.
-///
-/// ─── ANIMATION SETUP ─────────────────────────────────────────────────────────────────
-/// 1. Open Window → Animation → Animator.
-/// 2. Click the Parameters tab (left side) → + → Float → name it "Speed".
-/// 3. Right-click the graph → Create State → From New Blend Tree.
-/// 4. Double-click the Blend Tree state to enter it, then click the Blend Tree node.
-///    Inspector shows: Blend Type = 1D, Parameter = Speed.
-///    Uncheck "Automate Thresholds" then add 3 motions:
-///      Threshold 0               → Idle animation clip
-///      Threshold = wanderSpeed   → Walk animation clip   (default 2.0)
-///      Threshold = chaseSpeed    → Run  animation clip   (default 3.5)
-///    The thresholds MUST match the wanderSpeed and chaseSpeed values below.
-/// 5. Assign the Animator Controller to the Animator on the NPC's child mesh object.
-///
-/// ─── AUDIO SETUP ─────────────────────────────────────────────────────────────────────
-/// Assign clips in the Inspector:
-///   ambientLoop  — Looped breathing / hum. Separate audio source, never interrupted.
-///   alertClip    — One-shot played the moment the NPC first spots the player.
-///   footstepClip — One-shot triggered at speed-scaled intervals while moving.
-///   stunClip     — Played when hit by the flashlight.
-///   recoveryClip — Played when recovering from stun.
-/// </summary>
 [RequireComponent(typeof(NavMeshAgent))]
 public class PacerNPC : MonoBehaviour
 {
-    // ── Inspector ──────────────────────────────────────────────────────────────
-
     [Header("Movement — per level (index = level number)")]
     [SerializeField] private float[] wanderSpeeds = { 2.0f, 2.2f, 2.4f, 2.8f };
     [SerializeField] private float[] chaseSpeeds  = { 3.5f, 3.8f, 4.2f, 5.0f };
@@ -121,8 +85,6 @@ public class PacerNPC : MonoBehaviour
     [Tooltip("Name of the Speed float parameter in the Animator Controller. Must match exactly.")]
     [SerializeField] private string speedParam = "Speed";
 
-    // ── Components ─────────────────────────────────────────────────────────────
-
     private NavMeshAgent   _agent;
     private AudioSource    _sfxSource;
     private AudioSource    _ambientSource;
@@ -132,8 +94,6 @@ public class PacerNPC : MonoBehaviour
     private CameraControl  _cameraControl;
     private PacerJumpscare _pacerJumpscare;
 
-    // ── FSM ────────────────────────────────────────────────────────────────────
-
     private PacerStateBase _currentState;
     private PacerStateBase _previousState;
 
@@ -141,8 +101,6 @@ public class PacerNPC : MonoBehaviour
     private PacerChaseState   _chaseState;
     private PacerSearchState  _searchState;
     private PacerStunnedState _stunnedState;
-
-    // ── Shared runtime ─────────────────────────────────────────────────────────
 
     private int     _level        = 0;
     private bool    _sirenActive  = false;
@@ -157,13 +115,9 @@ public class PacerNPC : MonoBehaviour
     // so the blend tree actually receives a smoothly changing value.
     private float _targetAnimSpeed = 0f;
 
-    // ── Speed helpers ──────────────────────────────────────────────────────────
-
     private float WanderSpeed => _level < wanderSpeeds.Length ? wanderSpeeds[_level] : wanderSpeeds[^1];
     private float ChaseSpeed  => _level < chaseSpeeds.Length  ? chaseSpeeds[_level]  : chaseSpeeds[^1];
     private float ApplySiren(float spd) => _sirenActive ? spd * sirenSpeedMultiplier : spd;
-
-    // ── Unity lifecycle ────────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -244,8 +198,6 @@ public class PacerNPC : MonoBehaviour
         _currentState?.OnUpdate();
     }
 
-    // ── FSM ────────────────────────────────────────────────────────────────────
-
     private void ChangeState(PacerStateBase newState)
     {
         _currentState?.OnExit();
@@ -266,26 +218,11 @@ public class PacerNPC : MonoBehaviour
         else                                          GoToWander();
     }
 
-    // ── Perception ─────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns true when the NPC must treat the player as completely invisible.
-    /// Covers three cases:
-    ///   • Player is inside any safe/spawn/computer room (open or closed door) —
-    ///     the room floor is off the main NavMesh so the NPC can't reach them anyway;
-    ///     breaking LOS immediately prevents the "running in place at the door" bug.
-    ///   • Player is inside a closed room (doors shut) — full protection.
-    ///   • Player is hiding in a locker.
-    /// </summary>
     private bool IsPlayerProtected()
         => PlayerSafeZone.IsPlayerInRoom
         || PlayerSafeZone.IsPlayerProtected
         || LockerInteraction.IsHidingInLocker;
 
-    /// <summary>
-    /// Standard detection: player must be within range, inside the FOV cone, and
-    /// not occluded. Used by Wander to initially spot the player.
-    /// </summary>
     private bool CanSeePlayer()
     {
         if (_player == null) return false;
@@ -304,12 +241,6 @@ public class PacerNPC : MonoBehaviour
         return !Physics.Raycast(eye, dir.normalized, dir.magnitude, obstacleLayerMask);
     }
 
-    /// <summary>
-    /// Relaxed chase check: drops the FOV cone requirement and uses the wider
-    /// chaseTrackRange. This stops the NPC instantly losing track just because
-    /// the player runs past it to one side — it only gives up when the player
-    /// is genuinely behind a wall or has sprinted far out of range.
-    /// </summary>
     private bool CanTrackPlayerInChase()
     {
         if (_player == null) return false;
@@ -324,8 +255,6 @@ public class PacerNPC : MonoBehaviour
 
         return !Physics.Raycast(eye, dir.normalized, dir.magnitude, obstacleLayerMask);
     }
-
-    // ── Shared helpers ─────────────────────────────────────────────────────────
 
     private void StopAgent()
     {
@@ -372,13 +301,8 @@ public class PacerNPC : MonoBehaviour
         if (_agent != null) _agent.speed = ApplySiren(speed);
     }
 
-    /// <summary>
-    /// Sets the target animation speed. The damped SetFloat call in Update()
-    /// pushes this to the Animator every frame so the blend tree interpolates smoothly.
-    /// </summary>
     private void SetAnimSpeed(float speed) => _targetAnimSpeed = speed;
 
-    /// <summary>Instantly snaps the animator to 0 — used on stun so the NPC freezes immediately.</summary>
     private void SnapAnimToZero()
     {
         _targetAnimSpeed = 0f;
@@ -425,7 +349,6 @@ public class PacerNPC : MonoBehaviour
         handle = null;
     }
 
-    // ── Footsteps ──────────────────────────────────────────────────────────────
 
     private void HandleFootsteps()
     {
@@ -463,7 +386,6 @@ public class PacerNPC : MonoBehaviour
         }
     }
 
-    // ── Stun ───────────────────────────────────────────────────────────────────
 
     public void TryStun(float duration, float immunityWindow)
     {
@@ -482,12 +404,6 @@ public class PacerNPC : MonoBehaviour
         _immune = false;
     }
 
-    // ── Public API ─────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Called by GameManager on respawn. Clears the caught flag, restarts the
-    /// agent, and returns the NPC to its wander state so it can chase again.
-    /// </summary>
     public void ResetForRespawn()
     {
         _playerCaught = false;
@@ -509,7 +425,6 @@ public class PacerNPC : MonoBehaviour
         if (_agent != null) _agent.speed = ApplySiren(baseSpeed);
     }
 
-    // ── Gizmos ─────────────────────────────────────────────────────────────────
 
     private void OnDrawGizmosSelected()
     {

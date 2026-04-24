@@ -5,34 +5,9 @@ using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 using TMPro;
 
-/// <summary>
-/// Manages the periodic Siren Phase alert event on each dungeon level.
-///
-/// State Machine (coroutine-driven):
-///   Idle → Warning (5s) → Active (20–35s per level) → AllClear (2s) → Cooldown (60s min) → Idle
-///
-/// During Active phase:
-///   • Weeping Angels wander the level randomly and only chase when the player
-///     is close and in line of sight (Pacer-style patrol rather than direct pursuit)
-///   • The Pacer gets a +50% speed boost
-///   • The Watcher enters permanent Charge mode
-///   • InsanityManager gets passive insanity tick
-///   • Roof emissive flashes red during Warning, stays solid red during Active
-///
-/// NPCs register/deregister themselves in their Start/OnDestroy.
-/// SirenPhaseManager never calls FindObjectsOfType — safe against respawn.
-///
-/// Setup:
-///   1. Add this component to the same persistent GameObject as GameManager.
-///   2. Assign countdownText (TMP_Text) for the in-world countdown UI.
-///   3. Assign roofMaterial — the same material used by PowerManager.
-///   4. Siren phase does NOT trigger on level 0 (tutorial).
-/// </summary>
 public class SirenPhaseManager : MonoBehaviour
 {
     public static SirenPhaseManager Instance { get; private set; }
-
-    // ── Inspector ──────────────────────────────────────────────────────────────
 
     [Header("Timing — per level (index = level number)")]
     [Tooltip("Duration of the active siren phase (seconds), per level.")]
@@ -82,8 +57,6 @@ public class SirenPhaseManager : MonoBehaviour
     [Tooltip("Shader keyword that enables emission. Leave blank if your shader does not require a keyword (some custom shaders don't).")]
     [SerializeField] private string emissionKeyword = "_EMISSION";
 
-    // ── State ──────────────────────────────────────────────────────────────────
-
     private bool isPhaseActive = false;
     /// <summary>True while the siren Active phase is running.</summary>
     public bool IsPhaseActive => isPhaseActive;
@@ -98,12 +71,8 @@ public class SirenPhaseManager : MonoBehaviour
     // Original angel speeds (restored after siren)
     private readonly Dictionary<NPCMovement, float> originalAngelSpeeds = new Dictionary<NPCMovement, float>();
 
-    // ── Roof Emissive ──────────────────────────────────────────────────────────
-
     private readonly List<Material> roofInstances     = new List<Material>();
     private readonly List<Color>    roofOriginalColors = new List<Color>();
-
-    // ── Atmosphere Volume ──────────────────────────────────────────────────────
 
     private Volume           atmosphereVolume;
     private ColorAdjustments atmColorAdj;
@@ -111,11 +80,7 @@ public class SirenPhaseManager : MonoBehaviour
     private Coroutine        atmosphereFadeCoroutine;
     private Coroutine        pulseCoroutine;
 
-    // ── Audio ──────────────────────────────────────────────────────────────────
-
     private AudioSource alarmSource;
-
-    // ── Unity ──────────────────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -146,8 +111,6 @@ public class SirenPhaseManager : MonoBehaviour
             Destroy(atmosphereVolume.gameObject);
     }
 
-    // ── Public API (NPC Registration) ─────────────────────────────────────────
-
     public void RegisterAngel(NPCMovement angel)
     {
         if (!registeredAngels.Contains(angel))
@@ -172,7 +135,6 @@ public class SirenPhaseManager : MonoBehaviour
 
     
 
-    /// <summary>Called by GameManager.SetCurrentLevel — starts the siren cycle for this level.</summary>
     public void OnLevelChanged(int level)
     {
         currentLevel = level;
@@ -192,12 +154,6 @@ public class SirenPhaseManager : MonoBehaviour
 
     }
 
-    /// <summary>
-    /// Immediately cancels any active siren sequence on player death/respawn.
-    /// Stops all coroutines, resets NPC speed boosts, restores roof emissive,
-    /// and hides the countdown UI — exactly as OnLevelChanged does, but without
-    /// requiring a level change. Safe to call even when no siren is running.
-    /// </summary>
     public void CancelSiren()
     {
         if (!isPhaseActive) return;
@@ -220,21 +176,11 @@ public class SirenPhaseManager : MonoBehaviour
 
         if (InsanityManager.Instance != null)
             InsanityManager.Instance.IsSirenActive = false;
-
-        Debug.Log("[SirenPhaseManager] Siren cancelled by player respawn.");
     }
 
-    /// <summary>
-    /// Debug: immediately triggers the siren sequence, bypassing the idle wait.
-    /// Always runs a full-duration phase regardless of current level.
-    /// </summary>
     public void ForceTriggerSiren()
     {
-        if (isPhaseActive)
-        {
-            Debug.Log("[SirenPhaseManager] ForceTrigger ignored — siren already active.");
-            return;
-        }
+        if (isPhaseActive) return;
 
         StopAllCoroutines();
         isPhaseActive          = false;
@@ -254,7 +200,6 @@ public class SirenPhaseManager : MonoBehaviour
         if (duration <= 0f) duration = 25f;
 
         StartCoroutine(ForcedSirenSequence(duration));
-        Debug.Log($"[SirenPhaseManager] Siren force-triggered (duration={duration}s).");
     }
 
     private IEnumerator ForcedSirenSequence(float duration)
@@ -264,11 +209,6 @@ public class SirenPhaseManager : MonoBehaviour
         yield return StartCoroutine(AllClearPhase());
     }
 
-    /// <summary>
-    /// Called by CodeNumberManager when the designated siren-trigger code number is collected.
-    /// Accepts the level index directly so it works even if SetCurrentLevel was never called.
-    /// Runs the full siren sequence (Warning → Active → All Clear) once.
-    /// </summary>
     public void TriggerOnCodeCollected(int levelIndex)
     {
         if (isPhaseActive) return;
@@ -292,7 +232,6 @@ public class SirenPhaseManager : MonoBehaviour
         if (duration <= 0f) duration = 25f;
 
         StartCoroutine(CodeCollectedSirenSequence(duration));
-        Debug.Log($"[SirenPhaseManager] Siren triggered by code number collection (level={currentLevel}, duration={duration}s).");
     }
 
     private IEnumerator CodeCollectedSirenSequence(float duration)
@@ -302,7 +241,6 @@ public class SirenPhaseManager : MonoBehaviour
         yield return StartCoroutine(AllClearPhase());
     }
 
-    /// <summary>Forces all NPCs within radius to detect the player (Break Event).</summary>
     public void ForceNPCDetection(float radius)
     {
         GameObject player = GameObject.FindGameObjectWithTag("Player");
@@ -323,8 +261,6 @@ public class SirenPhaseManager : MonoBehaviour
 
     private IEnumerator WarningPhase()
     {
-        Debug.Log("[SirenPhaseManager] Warning phase started.");
-
         // Cache roof renderers once at the start of each siren event
         CacheRoofRenderers();
 
@@ -364,7 +300,6 @@ public class SirenPhaseManager : MonoBehaviour
 
     private IEnumerator ActivePhase(float duration)
     {
-        Debug.Log("[SirenPhaseManager] Active phase started.");
         isPhaseActive = true;
 
         if (InsanityManager.Instance != null)
@@ -403,7 +338,6 @@ public class SirenPhaseManager : MonoBehaviour
 
     private IEnumerator AllClearPhase()
     {
-        Debug.Log("[SirenPhaseManager] All Clear phase.");
 
         if (alarmSource != null) alarmSource.Stop();
 
@@ -430,10 +364,7 @@ public class SirenPhaseManager : MonoBehaviour
         yield return new WaitForSeconds(allClearDuration);
 
         if (countdownContainer != null) countdownContainer.SetActive(false);
-        Debug.Log("[SirenPhaseManager] All Clear complete.");
     }
-
-    // ── NPC Override Helpers ───────────────────────────────────────────────────
 
     private void ApplySirenOverride(bool active)
     {
@@ -466,13 +397,8 @@ public class SirenPhaseManager : MonoBehaviour
             angel.sirenOverride = false;
     }
 
-    // ── Break Event Handler ────────────────────────────────────────────────────
-
     private void OnBreakEvent() => ForceNPCDetection(12f);
 
-    // ── Roof Emissive ──────────────────────────────────────────────────────────
-
-    /// <summary>Finds and caches per-renderer instance materials for the roof.</summary>
     private void CacheRoofRenderers()
     {
         roofInstances.Clear();
@@ -530,9 +456,6 @@ public class SirenPhaseManager : MonoBehaviour
         if (roofInstances.Count == 0)
             Debug.LogWarning($"[SirenPhaseManager] No roof renderers found matching material '{matName}'. " +
                              $"Checked {checkedCount} candidate(s). Make sure the roofMaterial name matches exactly.");
-        else
-            Debug.Log($"[SirenPhaseManager] Cached {roofInstances.Count} roof renderer(s). " +
-                      $"Using property '{emissionPropertyName}'.");
     }
 
     private void SetRoofEmissive(Color color)
@@ -549,10 +472,8 @@ public class SirenPhaseManager : MonoBehaviour
                 roofInstances[i].SetColor(emissionPropertyName, roofOriginalColors[i]);
     }
 
-    // ── Atmosphere Volume ──────────────────────────────────────────────────────
-    // Mirrors PowerManager's exact approach: build once, SetActive to show/hide,
-    // lerp postExposure value directly inside a coroutine (same as FadeToNormal).
-
+    // Mirrors PowerManager's approach: build once, SetActive to show/hide,
+    // lerp postExposure inside a coroutine (same as FadeToNormal).
     private void EnsureVolumeBuilt()
     {
         if (atmosphereVolume != null) return;
@@ -595,13 +516,8 @@ public class SirenPhaseManager : MonoBehaviour
 
         atmosphereVolume.profile = profile;
         go.SetActive(false); // hidden until siren starts — same as PowerManager
-        Debug.Log("[SirenPhaseManager] Atmosphere volume built at priority 60.");
     }
 
-    /// <summary>
-    /// Runs during the active siren phase. Pulses postExposure and roof emissive together
-    /// between fully dark and fully red using a smooth sine wave — sirenPulseSpeed cycles/sec.
-    /// </summary>
     private IEnumerator SirenPulseLoop()
     {
         while (true)
@@ -620,10 +536,6 @@ public class SirenPhaseManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Fades postExposure from 0 → sirenPostExposure (fade in) or back to 0 (fade out).
-    /// Mirrors PowerManager.FadeToNormal exactly.
-    /// </summary>
     private IEnumerator FadeAtmosphereIn(float duration)
     {
         EnsureVolumeBuilt();
@@ -660,8 +572,6 @@ public class SirenPhaseManager : MonoBehaviour
         atmosphereVolume.gameObject.SetActive(false); // fully off — same as PowerManager
         atmosphereFadeCoroutine = null;
     }
-
-    // ── Audio ──────────────────────────────────────────────────────────────────
 
     private void BuildAlarmAudio()
     {

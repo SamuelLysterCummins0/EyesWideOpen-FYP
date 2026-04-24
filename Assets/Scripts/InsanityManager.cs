@@ -3,32 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// Singleton that owns the player's insanity value (0–100).
-///
-/// Increase sources (called externally):
-///   AddInsanity(float)       — generic add, used by PresenceNPC, SirenPhaseManager, etc.
-///   SetInsanity(float)       — hard-set (e.g. contact with The Presence)
-///
-/// Decrease sources (automatic per-frame):
-///   • Proximity to procedurally-generated room centers — no manual trigger placement needed.
-///     InsanityManager finds SafeRoomSetup, SpawnRoomSetup, ComputerRoomSetup, and
-///     HiddenRoomSetup automatically and checks player distance each frame.
-///   • Natural passive decay when The Presence is not active and player is in open dungeon.
-///
-/// Visual / audio effects are handled by InsanityVFX, which subscribes to the events below.
-///
-/// Setup:
-///   1. Add this component to any persistent GameObject.
-///   2. InsanityVFX subscribes to the public events automatically in its Start().
-///   3. GameManager.SetCurrentLevel() calls OnLevelChanged(int) for carry-in flooring.
-///   No InsanityRoomZone trigger objects needed — room detection is fully automatic.
-/// </summary>
+// Owns the player's insanity value (0-100). Other systems push increases in via
+// AddInsanity and subscribe to the events below. Decay happens automatically
+// based on which room the player is standing in.
 public class InsanityManager : MonoBehaviour
 {
     public static InsanityManager Instance { get; private set; }
-
-    // ── Inspector ──────────────────────────────────────────────────────────────
 
     [Header("Insanity Rates — Decay (per second)")]
     [Tooltip("Passive decay in open dungeon while Presence is inactive.")]
@@ -59,37 +39,22 @@ public class InsanityManager : MonoBehaviour
     [Header("Level Carry-In Floors (%) — insanity on entering each level is at least this value)")]
     [SerializeField] private float[] levelCarryInFloors = { 0f, 10f, 20f, 30f };
 
-    // ── Public Events ──────────────────────────────────────────────────────────
-
-    /// <summary>Fired every frame insanity changes. Passes the 0–100 value.</summary>
+    // Fired every frame the value changes, passing the 0-100 insanity.
     public event Action<float> OnInsanityChanged;
-
-    /// <summary>
-    /// Fired when insanity crosses a stage boundary (0-based: 0=0-25%, 1=25-50%, 2=50-75%, 3=75-100%).
-    /// Passes the new stage index.
-    /// </summary>
+    // Fired when the stage index (0-3) changes.
     public event Action<int> OnStageChanged;
-
-    /// <summary>Fired when insanity hits 100% — triggers screen flash, NPC alert, etc.</summary>
+    // Fired when insanity hits 100.
     public event Action OnBreakEvent;
-
-    /// <summary>Fired after a Break Event. Passes the post-break ban duration for The Presence.</summary>
+    // Fired after a break event, passing how long the Presence is banned for.
     public event Action<float> OnBreakEventComplete;
 
-    // ── State ──────────────────────────────────────────────────────────────────
-
     private float insanity = 0f;
-    /// <summary>Current insanity value 0–100.</summary>
     public float Insanity => insanity;
 
     private int currentStage = 0;
-    /// <summary>Current insanity stage (0–3).</summary>
     public int CurrentStage => currentStage;
 
-    /// <summary>True while The Presence is active — suppresses natural decay.</summary>
     public bool IsPresenceActive { get; set; } = false;
-
-    /// <summary>True while the Siren Phase is active — adds passive insanity per second.</summary>
     public bool IsSirenActive { get; set; } = false;
 
     [Header("Room Zone Detection")]
@@ -187,15 +152,12 @@ public class InsanityManager : MonoBehaviour
 
     /// <summary>
     /// Add (positive) or remove (negative) insanity. Clamped to 0–100.
-    /// Triggers Break Event at 100.
-    /// </summary>
     public void AddInsanity(float amount)
     {
         if (breakEventInProgress) return;
         ApplyDelta(amount);
     }
 
-    /// <summary>Hard-set insanity to an exact value. Triggers Break Event if value is 100.</summary>
     public void SetInsanity(float value)
     {
         if (breakEventInProgress) return;
@@ -203,10 +165,7 @@ public class InsanityManager : MonoBehaviour
         SetInsanityInternal(clamped);
     }
 
-    /// <summary>
-    /// Called by GameManager.SetCurrentLevel() on every level transition.
-    /// Applies the carry-in floor so players who managed insanity well start lower.
-    /// </summary>
+    // Called by GameManager on level change. Raises insanity to the floor for that level.
     public void OnLevelChanged(int newLevel)
     {
         if (levelCarryInFloors == null || newLevel <= 0) return;
@@ -214,22 +173,14 @@ public class InsanityManager : MonoBehaviour
         int idx   = Mathf.Clamp(newLevel, 0, levelCarryInFloors.Length - 1);
         float floor = levelCarryInFloors[idx];
 
-        // Set insanity to max(current, floor) — reward for keeping it low
         if (insanity < floor)
             SetInsanityInternal(floor);
 
         Debug.Log($"[InsanityManager] Level {newLevel} carry-in: insanity = {insanity:F1}% (floor was {floor}%)");
     }
 
-    /// <summary>
-    /// Notify InsanityManager whether the player is currently in darkness.
-    /// Called by PowerManager or a darkness detection component.
-    /// </summary>
     public void SetInDarkness(bool inDarkness) => isInDarkness = inDarkness;
 
-    // ── Room Zone Detection (automatic, no trigger objects needed) ─────────────
-
-    /// <summary>Find or re-find room setup scripts — safe to call repeatedly.</summary>
     private void RefreshRoomSources()
     {
         if (safeRoomSetup     == null) safeRoomSetup     = FindObjectOfType<SafeRoomSetup>();
@@ -238,18 +189,15 @@ public class InsanityManager : MonoBehaviour
         if (hiddenRoomSetup   == null) hiddenRoomSetup   = FindObjectOfType<HiddenRoomSetup>();
     }
 
-    /// <summary>
-    /// Check which room the player is currently nearest to and update currentRoomZone.
-    /// Runs every roomCheckInterval seconds — not every frame, so it's very cheap.
-    /// </summary>
+    // Picks which room the player is standing in. Runs on a timer, not every frame.
     private void UpdateRoomZone()
     {
         if (playerTransform == null) { currentRoomZone = RoomZoneType.None; return; }
 
         Vector3 pos = playerTransform.position;
-        float r2    = roomProximityRadius * roomProximityRadius; // compare squared distances — no sqrt
+        float r2    = roomProximityRadius * roomProximityRadius;
 
-        // Check in priority order: SafeRoom first (strongest decay, most important)
+        // Check SafeRoom first so it wins if multiple radii overlap
         if (IsNearAny(pos, r2, safeRoomSetup?.GetSafeRoomCenters()))
             { currentRoomZone = RoomZoneType.SafeRoom;     return; }
 
@@ -262,18 +210,16 @@ public class InsanityManager : MonoBehaviour
         if (IsNearAny(pos, r2, computerRoomSetup?.GetRoomCenters()))
             { currentRoomZone = RoomZoneType.ComputerRoom; return; }
 
-        currentRoomZone = RoomZoneType.None; // open dungeon corridor
+        currentRoomZone = RoomZoneType.None;
     }
 
-    /// <summary>Returns true if pos is within sqRadius (squared) of any point in the list
-    /// that also belongs to the player's current dungeon level.</summary>
+    // True if pos is within sqRadius of any centre on the player's current level.
     private bool IsNearAny(Vector3 pos, float sqRadius, IEnumerable<Vector3> centers)
     {
         if (centers == null) return false;
 
-        // Derive the player's level from GameManager and compare against each center's level.
-        // Room centers are stored at Y = levelIndex * -levelHeight, so we can reverse that.
-        // This is an exact integer match — no floating-point threshold ambiguity.
+        // Room centres are stored with y = levelIndex * -levelHeight, so reverse that
+        // to avoid matching rooms on other floors.
         int playerLevel = GameManager.Instance != null ? GameManager.Instance.GetCurrentLevel() : -1;
 
         foreach (Vector3 c in centers)
@@ -290,8 +236,6 @@ public class InsanityManager : MonoBehaviour
         }
         return false;
     }
-
-    // ── Internal ───────────────────────────────────────────────────────────────
 
     private void ApplyDelta(float delta)
     {

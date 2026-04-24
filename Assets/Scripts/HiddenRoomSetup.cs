@@ -1,25 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// Sets up the hidden-room mechanic each level.
-///
-/// Uses four directional breakable-wall prefabs (one per cardinal direction),
-/// the same way SpawnRoomSetup uses doorNorth/doorEast/doorSouth/doorWest.
-/// Assign each prefab in the Inspector — each should already be rotated /
-/// modelled to face the correct direction in its own asset.
-///
-/// Flow each level:
-///   1. Find a room tile far from spawn with ≥1 Wall edge (for the code number)
-///      and ≥1 Open edge (to seal).
-///   2. Register it with CodeNumberManager so normal wall-number spawning skips it.
-///   3. Seal every Open edge of that tile with the matching directional prefab.
-///   4. Spawn code-number slot 2 on a Wall edge inside.
-///   5. Scatter decoy breakable walls on solid Wall edges elsewhere.
-///   6. Drop the goggles pickup on a random reachable tile.
-///
-/// Called by ProceduralDungeonGenerator BEFORE CodeNumberManager.InitializeForLevel.
-/// </summary>
 public class HiddenRoomSetup : MonoBehaviour
 {
     public static HiddenRoomSetup Instance { get; private set; }
@@ -62,7 +43,6 @@ public class HiddenRoomSetup : MonoBehaviour
              "Increase to push it further from level entry points. (tileSize = 4, so 16 = 4 tiles away.)")]
     public float minPowerboxDistanceFromSpawn = 16f;
 
-    // ── Per-level tracked objects ──────────────────────────────────────────────
     private readonly List<GameObject> spawnedObjects = new List<GameObject>();
     // World-space tile centres per level — used by DungeonNavMeshSetup to exclude from NPC spawn zones.
     private readonly Dictionary<int, Vector3> hiddenRoomCentersByLevel = new Dictionary<int, Vector3>();
@@ -75,15 +55,11 @@ public class HiddenRoomSetup : MonoBehaviour
     // Tile where the powerbox was placed — goggles spawn here instead of a random tile
     private Vector2Int powerboxTile = new Vector2Int(-1, -1);
 
-    // ── Unity ─────────────────────────────────────────────────────────────────
-
     private void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
     }
-
-    // ── Entry point ───────────────────────────────────────────────────────────
 
     public void SetupLevel(
         ProceduralDungeonGenerator gen,
@@ -225,8 +201,6 @@ public class HiddenRoomSetup : MonoBehaviour
             SpawnGoggles(gen, reachable, protectedTiles, spawnRef, levelParent, tileSize, levelY, levelIndex);
     }
 
-    // ── Tile selection ─────────────────────────────────────────────────────────
-
     private Vector2Int FindHiddenRoomTile(
         ProceduralDungeonGenerator gen,
         List<Vector2Int> reachable,
@@ -259,14 +233,9 @@ public class HiddenRoomSetup : MonoBehaviour
         return new Vector2Int(-1, -1);
     }
 
-    /// <summary>
-    /// Returns true if every genuine open passage on this tile can be sealed with a breakable wall,
-    /// AND at least one such passage exists (so the player has a way to break in).
-    ///
-    /// A "genuine opening" is an edge that is Open on the hidden room tile AND whose adjacent tile
-    /// also has an Open face back. Edges where the adjacent tile has a Wall facing back are already
-    /// physically sealed by that geometry — no breakable wall needed or wanted there.
-    /// </summary>
+    // A "genuine opening" is an edge that is Open on the hidden room tile AND whose adjacent tile
+    // also has an Open face back. Edges where the adjacent tile has a Wall facing back are already
+    // physically sealed by that geometry — no breakable wall needed or wanted there.
     private bool CanFullySeal(ProceduralDungeonGenerator gen, Vector2Int pos, ProceduralDungeonGenerator.TileConfig cfg)
     {
         bool hasGenuineEntry = false;
@@ -306,8 +275,6 @@ public class HiddenRoomSetup : MonoBehaviour
         hasGenuineEntry = true;
         return true;
     }
-
-    // ── Room sealing ───────────────────────────────────────────────────────────
 
     private void SealRoom(
         ProceduralDungeonGenerator gen,
@@ -373,12 +340,7 @@ public class HiddenRoomSetup : MonoBehaviour
         spawnedObjects.Add(wall);
     }
 
-    // ── Hidden code number ─────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Called by ProceduralDungeonGenerator AFTER CodeNumberManager.InitializeForLevel
-    /// so that the digit values are already generated before we spawn the number in the room.
-    /// </summary>
+    // Called AFTER CodeNumberManager.InitializeForLevel so digit values are already generated.
     public void SpawnNumberAfterInit(int levelIndex, float tileSize)
     {
         if (pendingHiddenPos.x < 0)
@@ -439,8 +401,6 @@ public class HiddenRoomSetup : MonoBehaviour
         }
     }
 
-    // ── Goggles pickup ─────────────────────────────────────────────────────────
-
     private void SpawnGoggles(
         ProceduralDungeonGenerator gen,
         List<Vector2Int> reachable,
@@ -491,13 +451,7 @@ public class HiddenRoomSetup : MonoBehaviour
         }
     }
 
-    // ── Powerbox ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Finds a perimeter-adjacent, non-corner room tile for the powerbox where a
-    /// raycast confirms actual wall geometry exists on the outer face.
-    /// Uses the reachable tile list so only tiles with real geometry are candidates.
-    /// </summary>
+    // Finds a perimeter-adjacent non-corner tile where a raycast confirms outer wall geometry exists.
     private Vector2Int FindPowerboxTile(
         ProceduralDungeonGenerator gen,
         List<Vector2Int> reachable,
@@ -566,10 +520,6 @@ public class HiddenRoomSetup : MonoBehaviour
         return new Vector2Int(-1, -1);
     }
 
-    /// <summary>
-    /// Places the powerbox against the confirmed outer wall of the tile.
-    /// Only uses the raycast hit point — no fallback — so it's always flush with geometry.
-    /// </summary>
     private void SpawnPowerbox(
         ProceduralDungeonGenerator gen,
         Vector2Int pos,
@@ -614,8 +564,6 @@ public class HiddenRoomSetup : MonoBehaviour
         return "north";
     }
 
-    // ── Cleanup ────────────────────────────────────────────────────────────────
-
     public void ClearAll()
     {
         foreach (GameObject obj in spawnedObjects)
@@ -635,8 +583,6 @@ public class HiddenRoomSetup : MonoBehaviour
         if (CodeNumberManager.Instance != null)
             CodeNumberManager.Instance.ClearExcludedTiles();
     }
-
-    // ── Utility ────────────────────────────────────────────────────────────────
 
     private void ShuffleList<T>(List<T> list)
     {

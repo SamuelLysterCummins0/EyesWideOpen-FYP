@@ -32,6 +32,8 @@ public class FlashlightHUD : MonoBehaviour
     // ── Canvas ────────────────────────────────────────────────────────────────
     private Canvas hudCanvas;
 
+    private bool _forceHidden = false;
+
     // ── Unity ──────────────────────────────────────────────────────────────────
 
     private void Awake()
@@ -55,8 +57,7 @@ public class FlashlightHUD : MonoBehaviour
     {
         if (FlashlightController.Instance == null) return;
 
-        // Auto-show bar as soon as the flashlight is unlocked (handles startUnlocked = true too).
-        bool shouldShow = FlashlightController.Instance.IsUnlocked;
+        bool shouldShow = FlashlightController.Instance.IsUnlocked && !_forceHidden;
         if (batteryBarRoot != null && batteryBarRoot.activeSelf != shouldShow)
             batteryBarRoot.SetActive(shouldShow);
 
@@ -65,6 +66,14 @@ public class FlashlightHUD : MonoBehaviour
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
+
+    /// <summary>Externally suppress the battery bar (overrides the unlock-based auto-show).</summary>
+    public void SetForceHidden(bool hidden)
+    {
+        _forceHidden = hidden;
+        if (batteryBarRoot != null && hidden)
+            batteryBarRoot.SetActive(false);
+    }
 
     /// <summary>Show or hide the battery bar manually.</summary>
     public void ShowBatteryBar(bool show)

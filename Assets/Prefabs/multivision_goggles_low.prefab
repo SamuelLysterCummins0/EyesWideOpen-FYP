@@ -93,7 +93,7 @@ PrefabInstance:
       addedObject: {fileID: 4079343874403979148}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 8bc21940e2c3d7e4da01b0f171199fb1, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 1466074549037463136}
+      addedObject: {fileID: -5363042081682367948}
   m_SourcePrefab: {fileID: 100100000, guid: 8bc21940e2c3d7e4da01b0f171199fb1, type: 3}
 --- !u!1 &9018813089119591481 stripped
 GameObject:
@@ -121,7 +121,7 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.086198844, y: 0.07227161, z: 0.060102947}
   m_Center: {x: -0.00006558001, y: 0.041832823, z: 0.02397889}
---- !u!114 &1466074549037463136
+--- !u!114 &-5363042081682367948
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -130,15 +130,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 9018813089119591481}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0f66cd300eafc7e4c814c0de973c3766, type: 3}
+  m_Script: {fileID: 11500000, guid: 19bdd57f04f9b064bb3749d5f0874796, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  item: {fileID: 11400000, guid: 0db467307abc76941904917fe3039938, type: 2}
-  rotationCorrection: {x: -180.2, y: 0, z: 0}
-  heightOffset: 0
-  rayDistance: 6
-  gazeHitRadius: 0.45
-  promptText: Blink to pick up
-  glowColor: {r: 0, g: 1, b: 0, a: 1}
-  glowIntensity: 2
+  rayDistance: 5
+  gazeHitRadius: 0.5
+  promptMessage: Blink to pick up goggles
+  glowColor: {r: 0.5, g: 0.2, b: 1, a: 1}
+  glowIntensity: 2.5
   pulseSpeed: 3

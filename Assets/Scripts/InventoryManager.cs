@@ -89,7 +89,6 @@ public class InventoryManager : MonoBehaviour
         foreach (var item in Items)
         {
             GameObject obj = Instantiate(InventoryItem, ItemContent);
-            obj.AddComponent<DraggableItem>(); 
 
             ItemController itemController = obj.AddComponent<ItemController>();
         itemController.item = item;

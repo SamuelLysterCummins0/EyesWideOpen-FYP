@@ -2,14 +2,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using NavKeypad;
 
-/// <summary>
-/// Manages the 4-digit code collection system.
-/// Generates a random code each level, spawns CodeNumber objects on valid interior walls,
-/// and syncs the final code to the Keypad once all digits are collected.
-///
-/// Add this as a component in your scene (one instance). It gets called by
-/// ProceduralDungeonGenerator after each level is built.
-/// </summary>
 public class CodeNumberManager : MonoBehaviour
 {
     public static CodeNumberManager Instance { get; private set; }
@@ -27,7 +19,6 @@ public class CodeNumberManager : MonoBehaviour
     [Header("References")]
     [SerializeField] private CodeNumberHUD hud;
 
-    // ── Per-level state ───────────────────────────────────────────────────────
     // Keeps digits, collection status, keypad ref, and spawned objects separate
     // per level so generating level 1 doesn't destroy level 0's numbers.
     private class LevelData
@@ -47,7 +38,6 @@ public class CodeNumberManager : MonoBehaviour
     // Tiles registered by HiddenRoomSetup that should be skipped during wall-number placement
     private HashSet<Vector2Int> excludedTiles = new HashSet<Vector2Int>();
 
-    // ── Unity Lifecycle ──────────────────────────────────────────────────────
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -75,12 +65,7 @@ public class CodeNumberManager : MonoBehaviour
     private bool isQuitting = false;
     private void OnApplicationQuit() { isQuitting = true; }
 
-    // ── Public Query API ─────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns the world positions of every spawned CodeNumber object across all levels.
-    /// Used by LockerSetup to avoid placing lockers on tiles that already have digits on them.
-    /// </summary>
+    // Used by LockerSetup to avoid placing lockers on tiles that already have digits on them.
     public List<Vector3> GetSpawnedPositions()
     {
         List<Vector3> positions = new List<Vector3>();
@@ -95,11 +80,6 @@ public class CodeNumberManager : MonoBehaviour
         return positions;
     }
 
-    // ── Called by ProceduralDungeonGenerator ─────────────────────────────────
-    /// <summary>
-    /// Entry point called by the dungeon generator after a level finishes building.
-    /// Clears any previous state, generates a new code, and spawns numbers.
-    /// </summary>
     public void InitializeForLevel(ProceduralDungeonGenerator generator, int levelIndex, int startX, int startZ, int wallNumberCount = 2)
     {
         currentInitLevel = levelIndex;
@@ -218,8 +198,6 @@ public class CodeNumberManager : MonoBehaviour
         if (hud != null) hud.ResetDisplay();
     }
 
-    // ── Spawning ─────────────────────────────────────────────────────────────
-
     private void SpawnCodeNumber(Vector3 position, Vector3 wallNormal, int digit, int orderIndex, int levelIndex)
     {
         if (codeNumberPrefab == null)
@@ -249,10 +227,6 @@ public class CodeNumberManager : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Scans the four faces of a tile to find an interior wall surface suitable for placement.
-    /// Returns the world position (at eye height) on success, null if no valid face found.
-    /// </summary>
     private Vector3? FindValidWallSurface(GameObject tile, ProceduralDungeonGenerator.TileConfig config,
                                           float tileSize, out Vector3 outNormal)
     {
@@ -308,12 +282,7 @@ public class CodeNumberManager : MonoBehaviour
         return null; // No valid wall face on this tile.
     }
 
-    // ── Collection Callback ───────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns the pre-generated digit for a given level and slot index (0–3).
-    /// Digit 3 is not spawned on a wall — it is revealed by the computer terminal maze.
-    /// </summary>
+    // Digit 3 is not spawned on a wall — it is revealed by the computer terminal maze.
     public int GetDigit(int levelIndex, int orderIndex)
     {
         if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return -1;
@@ -321,10 +290,6 @@ public class CodeNumberManager : MonoBehaviour
         return data.digits[orderIndex];
     }
 
-    /// <summary>
-    /// Called by a CodeNumber (wall) or by MazeMinigame (computer terminal) when a digit is collected.
-    /// levelIndex tells us which level's state and keypad to update.
-    /// </summary>
     public void OnDigitCollected(int levelIndex, int orderIndex, int digit)
     {
         if (!levelStates.TryGetValue(levelIndex, out LevelData data))
@@ -384,14 +349,6 @@ public class CodeNumberManager : MonoBehaviour
         }
     }
 
-    // ── Utility ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Called by GameManager when the player respawns.
-    /// Re-enables all collected wall numbers for the current level and clears
-    /// the collection state so the player must gather them again.
-    /// The level layout, digit values, and number positions are preserved.
-    /// </summary>
     public void ResetCollectionForLevel(int levelIndex)
     {
         Debug.Log($"[CodeNumberManager] ResetCollectionForLevel({levelIndex}) called.");
@@ -511,12 +468,7 @@ public class CodeNumberManager : MonoBehaviour
         levelStates.Clear();
     }
 
-    // ── Save / Load helpers ───────────────────────────────────────────────────
-
-    /// <summary>
-    /// Returns a bitmask of which digit slots (0-3) have been collected on this level.
-    /// Used by SaveGameManager when writing a save file.
-    /// </summary>
+    // Returns a bitmask of which digit slots (0-3) have been collected — used by SaveGameManager.
     public int GetCollectedMask(int levelIndex)
     {
         if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return 0;
@@ -526,12 +478,8 @@ public class CodeNumberManager : MonoBehaviour
         return mask;
     }
 
-    /// <summary>
-    /// Silently marks collected digits from a saved bitmask without triggering
-    /// the siren or other in-game events. Disables the corresponding pickup
-    /// GameObjects, updates the HUD, and re-locks/unlocks the keypad appropriately.
-    /// Called by SaveGameManager after dungeon regeneration on load.
-    /// </summary>
+    // Restores collected digits from a save without triggering siren or game events.
+    // Called by SaveGameManager after dungeon regeneration on load.
     public void RestoreCollectedStateQuiet(int levelIndex, int mask)
     {
         if (!levelStates.TryGetValue(levelIndex, out LevelData data)) return;
@@ -569,14 +517,7 @@ public class CodeNumberManager : MonoBehaviour
         Debug.Log($"[CodeNumberManager] Restored collected state for L{levelIndex}: mask={mask}, count={data.collectedCount}");
     }
 
-    // ── Hidden room / excluded tile integration ───────────────────────────────
-
-    /// <summary>
-    /// Called by HiddenRoomSetup to place the slot-2 code number on a Wall face
-    /// inside the hidden room tile.
-    /// Returns the spawned GameObject so HiddenRoomSetup can track it for cleanup.
-    /// NOTE: Must be called AFTER InitializeForLevel so level state exists.
-    /// </summary>
+    // Must be called AFTER InitializeForLevel so level state exists.
     public GameObject SpawnHiddenRoomNumber(
         GameObject tile,
         ProceduralDungeonGenerator.TileConfig config,
@@ -625,18 +566,11 @@ public class CodeNumberManager : MonoBehaviour
         return obj;
     }
 
-    /// <summary>
-    /// Registers a tile grid position that should be skipped during wall-number placement.
-    /// Called by HiddenRoomSetup before InitializeForLevel runs.
-    /// </summary>
     public void ExcludeTile(Vector2Int gridPos)
     {
         excludedTiles.Add(gridPos);
     }
 
-    /// <summary>
-    /// Clears the excluded-tile set — called by HiddenRoomSetup.ClearAll() before regeneration.
-    /// </summary>
     public void ClearExcludedTiles()
     {
         excludedTiles.Clear();
